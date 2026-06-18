@@ -273,6 +273,15 @@ input[type="range"]::-moz-range-thumb {
 }
 .upload-zone:hover { border-color: var(--accent); }
 .upload-zone.dragover { border-color: var(--accent); background: var(--accent-soft); }
+.upload-processing-status {
+  margin-top: 8px;
+  min-height: 16px;
+  color: var(--ink-soft);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+.upload-processing-status.processing { color: var(--accent); }
+.upload-processing-status.error { color: #B94A48; }
 
 .swatch-row {
   display: flex;
@@ -815,21 +824,10 @@ select {
         <button type="button" id="customIconUploadBtn" class="btn btn-secondary" style="width:100%; padding:9px; font-size:12.5px;">
           ⬆ 上传新图标（支持多选）
         </button>
-
-        <div style="display:flex; gap:14px; margin-top:10px; padding:9px 11px; background:var(--paper); border-radius:7px; font-size:11.5px;">
-          <span style="color:var(--ink-soft); font-weight:500; flex-shrink:0;">上传后颜色：</span>
-          <label style="display:flex; align-items:center; gap:5px; cursor:pointer;">
-            <input type="radio" name="customColorMode" value="original" checked style="margin:0;">
-            <span>保留原色</span>
-          </label>
-          <label style="display:flex; align-items:center; gap:5px; cursor:pointer;">
-            <input type="radio" name="customColorMode" value="tint" style="margin:0;">
-            <span>单色染色</span>
-          </label>
-        </div>
         <p style="font-size:10.5px; color:var(--ink-soft); margin-top:8px; line-height:1.5;">
-          "保留原色"适合彩色装饰图（如手绘花朵）；"单色染色"适合简笔黑白图，会按调色板上色，建议用透明背景 PNG。
+          上传后自动去除白底、灰底或棋盘格，并转换为保留明暗纹理的黑色透明 PNG。
         </p>
+        <div id="customIconProcessingStatus" class="upload-processing-status" aria-live="polite"></div>
       </div>
 
       <div class="icon-grid" id="iconGrid"></div>
@@ -940,6 +938,7 @@ select {
             <img id="heroUploadPreview" style="display:none; max-width:100%; max-height:80px; object-fit:contain;">
           </div>
           <button class="btn btn-secondary" id="heroClearUpload" style="width:100%; margin-top:8px; display:none; font-size:12px; padding:8px;">移除已上传图片</button>
+          <div id="heroProcessingStatus" class="upload-processing-status" aria-live="polite"></div>
         </div>
 
         <div class="group-label" style="margin-bottom:8px;">主元素尺寸<span class="val" id="heroSizeVal">28%</span></div>
@@ -1790,49 +1789,246 @@ function buildIconGrid() {
   document.getElementById('iconCountLabel').textContent = state.activeIcons.size + ' 种';
 }
 
-// 处理自定义图标文件上传
-let customIconCounter = 0;
-function handleCustomIconUpload(files) {
-  if (!files || files.length === 0) return;
-  Array.from(files).forEach(file => {
-    if (!file.type.startsWith('image/')) return;
+// 将上传图片转换为保留纹理的黑色透明 PNG。
+function loadImageFile(file) {
+  return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = (e) => {
-      const rawDataURL = e.target.result;
+    reader.onerror = () => reject(new Error('读取图片失败'));
+    reader.onload = () => {
       const img = new Image();
-      img.onload = () => {
-        // 大图自动缩放：长边超过 512px 时，按比例缩小，减少内存和后续渲染开销
-        const MAX_DIM = 512;
-        let finalDataURL = rawDataURL;
-        const longSide = Math.max(img.naturalWidth, img.naturalHeight);
-        if (longSide > MAX_DIM) {
-          const scale = MAX_DIM / longSide;
-          const newW = Math.round(img.naturalWidth * scale);
-          const newH = Math.round(img.naturalHeight * scale);
-          const tmp = document.createElement('canvas');
-          tmp.width = newW;
-          tmp.height = newH;
-          tmp.getContext('2d').drawImage(img, 0, 0, newW, newH);
-          // PNG 保留透明通道；如果原图是 JPEG 则也用 png 输出（保险起见）
-          finalDataURL = tmp.toDataURL('image/png');
-        }
-
-        const finalImg = new Image();
-        finalImg.onload = () => {
-          const id = `custom_${Date.now()}_${customIconCounter++}`;
-          customImgEls.set(id, finalImg);
-          const colorMode = document.querySelector('input[name="customColorMode"]:checked')?.value || 'original';
-          state.customIcons.push({ id, dataURL: finalDataURL, colorMode });
-          state.activeIcons.add(id); // 上传后自动加入勾选
-          buildIconGrid();
-          render();
-        };
-        finalImg.src = finalDataURL;
-      };
-      img.src = rawDataURL;
+      img.onerror = () => reject(new Error('无法解析图片'));
+      img.onload = () => resolve(img);
+      img.src = reader.result;
     };
     reader.readAsDataURL(file);
   });
+}
+
+function estimateUploadBackgroundPalette(data, width, height) {
+  const counts = new Map();
+  const add = (x, y) => {
+    const index = (y * width + x) * 4;
+    const values = [data[index], data[index + 1], data[index + 2]].map(value =>
+      Math.min(255, Math.floor(value / 12) * 12 + 6)
+    );
+    const key = values.join(',');
+    counts.set(key, (counts.get(key) || 0) + 1);
+  };
+
+  for (let x = 0; x < width; x++) {
+    add(x, 0);
+    if (height > 1) add(x, height - 1);
+  }
+  for (let y = 1; y < height - 1; y++) {
+    add(0, y);
+    if (width > 1) add(width - 1, y);
+  }
+
+  const borderCount = Math.max(1, width * 2 + Math.max(0, height - 2) * 2);
+  const minimumCount = Math.max(2, Math.floor(borderCount * 0.025));
+  const palette = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .filter(([, count]) => count >= minimumCount)
+    .slice(0, 4)
+    .map(([key]) => key.split(',').map(Number));
+  return palette.length ? palette : [[255, 255, 255]];
+}
+
+function createEdgeConnectedBackground(data, width, height, palette, tolerance) {
+  const pixelCount = width * height;
+  const distances = new Float32Array(pixelCount);
+  const candidates = new Uint8Array(pixelCount);
+  const background = new Uint8Array(pixelCount);
+  const queue = new Int32Array(pixelCount);
+  let head = 0;
+  let tail = 0;
+
+  for (let pixel = 0; pixel < pixelCount; pixel++) {
+    const index = pixel * 4;
+    let minimum = Infinity;
+    for (const color of palette) {
+      const dr = data[index] - color[0];
+      const dg = data[index + 1] - color[1];
+      const db = data[index + 2] - color[2];
+      minimum = Math.min(minimum, Math.sqrt(dr * dr + dg * dg + db * db));
+    }
+    distances[pixel] = minimum;
+    candidates[pixel] = minimum <= tolerance ? 1 : 0;
+  }
+
+  const enqueue = pixel => {
+    if (candidates[pixel] && !background[pixel]) {
+      background[pixel] = 1;
+      queue[tail++] = pixel;
+    }
+  };
+  for (let x = 0; x < width; x++) {
+    enqueue(x);
+    enqueue((height - 1) * width + x);
+  }
+  for (let y = 1; y < height - 1; y++) {
+    enqueue(y * width);
+    enqueue(y * width + width - 1);
+  }
+
+  while (head < tail) {
+    const pixel = queue[head++];
+    const x = pixel % width;
+    const y = Math.floor(pixel / width);
+    if (x > 0) enqueue(pixel - 1);
+    if (x + 1 < width) enqueue(pixel + 1);
+    if (y > 0) enqueue(pixel - width);
+    if (y + 1 < height) enqueue(pixel + width);
+  }
+  return { background, distances };
+}
+
+function expandPixelMask(mask, width, height, iterations) {
+  let expanded = mask.slice();
+  for (let iteration = 0; iteration < iterations; iteration++) {
+    const next = expanded.slice();
+    for (let pixel = 0; pixel < expanded.length; pixel++) {
+      if (!expanded[pixel]) continue;
+      const x = pixel % width;
+      const y = Math.floor(pixel / width);
+      if (x > 0) next[pixel - 1] = 1;
+      if (x + 1 < width) next[pixel + 1] = 1;
+      if (y > 0) next[pixel - width] = 1;
+      if (y + 1 < height) next[pixel + width] = 1;
+    }
+    expanded = next;
+  }
+  return expanded;
+}
+
+async function convertUploadToBlackTransparentPng(file, maxDimension = 1024) {
+  if (!file || !file.type.startsWith('image/')) throw new Error('请选择图片文件');
+  const img = await loadImageFile(file);
+  const longSide = Math.max(img.naturalWidth, img.naturalHeight);
+  const scale = longSide > maxDimension ? maxDimension / longSide : 1;
+  const width = Math.max(1, Math.round(img.naturalWidth * scale));
+  const height = Math.max(1, Math.round(img.naturalHeight * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, 0, 0, width, height);
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const data = imageData.data;
+
+  let hasTrustedTransparency = false;
+  for (let index = 3; index < data.length; index += 4) {
+    if (data[index] < 250) {
+      hasTrustedTransparency = true;
+      break;
+    }
+  }
+
+  if (!hasTrustedTransparency) {
+    const tolerance = 30;
+    const feather = 18;
+    const palette = estimateUploadBackgroundPalette(data, width, height);
+    const { background, distances } = createEdgeConnectedBackground(data, width, height, palette, tolerance);
+    const expanded = expandPixelMask(background, width, height, 3);
+    for (let pixel = 0; pixel < background.length; pixel++) {
+      const alphaIndex = pixel * 4 + 3;
+      if (background[pixel]) {
+        data[alphaIndex] = 0;
+      } else if (expanded[pixel]) {
+        data[alphaIndex] = Math.min(data[alphaIndex], Math.round(
+          Math.max(0, Math.min(1, (distances[pixel] - tolerance) / feather)) * 255
+        ));
+      }
+    }
+  }
+
+  let left = width;
+  let top = height;
+  let right = -1;
+  let bottom = -1;
+  let transparentPixels = 0;
+  let opaquePixels = 0;
+  for (let pixel = 0; pixel < width * height; pixel++) {
+    const index = pixel * 4;
+    const luminance = 0.2126 * data[index] + 0.7152 * data[index + 1] + 0.0722 * data[index + 2];
+    const blackTexture = Math.round(8 + luminance / 255 * 64);
+    data[index] = blackTexture;
+    data[index + 1] = blackTexture;
+    data[index + 2] = blackTexture;
+    if (data[index + 3] <= 2) data[index + 3] = 0;
+    if (data[index + 3] >= 253) data[index + 3] = 255;
+
+    const alpha = data[index + 3];
+    if (alpha === 0) transparentPixels++;
+    if (alpha === 255) opaquePixels++;
+    if (alpha > 0) {
+      const x = pixel % width;
+      const y = Math.floor(pixel / width);
+      left = Math.min(left, x);
+      top = Math.min(top, y);
+      right = Math.max(right, x);
+      bottom = Math.max(bottom, y);
+    }
+  }
+
+  if (right < left || bottom < top) throw new Error('没有识别到可见主体');
+  if (!transparentPixels) throw new Error('背景与主体过于接近，无法可靠生成透明背景');
+  if (!opaquePixels) throw new Error('图片没有完全不透明的主体像素');
+
+  ctx.putImageData(imageData, 0, 0);
+  const cropWidth = right - left + 1;
+  const cropHeight = bottom - top + 1;
+  const cropped = document.createElement('canvas');
+  cropped.width = cropWidth;
+  cropped.height = cropHeight;
+  cropped.getContext('2d').drawImage(canvas, left, top, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+  return cropped.toDataURL('image/png');
+}
+
+function setUploadProcessingStatus(id, message, type = '') {
+  const status = document.getElementById(id);
+  if (!status) return;
+  status.textContent = message;
+  status.className = `upload-processing-status ${type}`.trim();
+}
+
+// 处理自定义图标文件上传
+let customIconCounter = 0;
+async function handleCustomIconUpload(files) {
+  if (!files || files.length === 0) return;
+  const validFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
+  const uploadButton = document.getElementById('customIconUploadBtn');
+  uploadButton.disabled = true;
+  try {
+    for (let index = 0; index < validFiles.length; index++) {
+      setUploadProcessingStatus(
+        'customIconProcessingStatus',
+        `正在转换第 ${index + 1}/${validFiles.length} 张图片…`,
+        'processing'
+      );
+      const finalDataURL = await convertUploadToBlackTransparentPng(validFiles[index], 512);
+      const finalImg = new Image();
+      await new Promise((resolve, reject) => {
+        finalImg.onload = resolve;
+        finalImg.onerror = () => reject(new Error('转换后的图片加载失败'));
+        finalImg.src = finalDataURL;
+      });
+      const id = `custom_${Date.now()}_${customIconCounter++}`;
+      customImgEls.set(id, finalImg);
+      state.customIcons.push({ id, dataURL: finalDataURL, colorMode: 'original' });
+      state.activeIcons.add(id);
+    }
+    buildIconGrid();
+    render();
+    setUploadProcessingStatus('customIconProcessingStatus', `已转换 ${validFiles.length} 张黑色透明 PNG`);
+  } catch (error) {
+    console.error(error);
+    setUploadProcessingStatus('customIconProcessingStatus', error.message, 'error');
+  } finally {
+    uploadButton.disabled = false;
+  }
 }
 
 function buildSwatchRow() {
@@ -3464,24 +3660,33 @@ document.getElementById('heroTabUpload').onclick = () => {
 const heroUploadZone = document.getElementById('heroUploadZone');
 const heroFileInput = document.getElementById('heroFileInput');
 
-function handleHeroFile(file) {
+async function handleHeroFile(file) {
   if (!file || !file.type.startsWith('image/')) return;
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    state.heroCustomImage = e.target.result;
+  setUploadProcessingStatus('heroProcessingStatus', '正在转换为黑色透明 PNG…', 'processing');
+  try {
+    state.heroCustomImage = await convertUploadToBlackTransparentPng(file, 1536);
     const img = new Image();
-    img.onload = () => {
-      state._heroImgEl = img;
-      document.getElementById('heroUploadPlaceholder').style.display = 'none';
-      const preview = document.getElementById('heroUploadPreview');
-      preview.src = state.heroCustomImage;
-      preview.style.display = 'block';
-      document.getElementById('heroClearUpload').style.display = 'block';
-      render();
-    };
-    img.src = state.heroCustomImage;
-  };
-  reader.readAsDataURL(file);
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = () => reject(new Error('转换后的图片加载失败'));
+      img.src = state.heroCustomImage;
+    });
+    state._heroImgEl = img;
+    document.getElementById('heroUploadPlaceholder').style.display = 'none';
+    const preview = document.getElementById('heroUploadPreview');
+    preview.src = state.heroCustomImage;
+    preview.style.display = 'block';
+    document.getElementById('heroClearUpload').style.display = 'block';
+    setUploadProcessingStatus('heroProcessingStatus', '已转换为保留纹理的黑色透明 PNG');
+    render();
+  } catch (error) {
+    console.error(error);
+    state.heroCustomImage = null;
+    state._heroImgEl = null;
+    setUploadProcessingStatus('heroProcessingStatus', error.message, 'error');
+  } finally {
+    heroFileInput.value = '';
+  }
 }
 
 heroUploadZone.onclick = () => heroFileInput.click();
@@ -3500,6 +3705,7 @@ document.getElementById('heroClearUpload').onclick = (e) => {
   document.getElementById('heroUploadPlaceholder').style.display = 'block';
   document.getElementById('heroUploadPreview').style.display = 'none';
   document.getElementById('heroClearUpload').style.display = 'none';
+  setUploadProcessingStatus('heroProcessingStatus', '');
   render();
 };
 
