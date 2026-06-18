@@ -974,6 +974,75 @@ select {
 
         <div class="group-label" style="margin:14px 0 8px;">主元素旋转角度<span class="val" id="heroRotVal">0°</span></div>
         <input type="range" id="heroRotation" min="0" max="360" step="5" value="0">
+
+        <div class="toggle-row" style="margin-top:14px;">
+          <span style="font-size:12px; font-weight:600;">避让其他元素</span>
+          <div class="switch on" id="heroAvoidSwitch"></div>
+        </div>
+        <div id="heroAvoidControls" style="margin-top:10px;">
+          <div class="group-label" style="margin-bottom:8px;">主元素避让距离<span class="val" id="heroAvoidDistanceVal">8mm</span></div>
+          <input type="range" id="heroAvoidDistanceMM" min="0" max="30" step="1" value="8">
+        </div>
+      </div>
+    </div>
+
+    <!-- 文字图层 -->
+    <div class="group">
+      <div class="toggle-row" style="margin-bottom:14px;">
+        <span style="font-weight:600;">文字图层</span>
+        <div class="switch" id="textLayerSwitch"></div>
+      </div>
+      <p style="font-size:11.5px; color:var(--ink-soft); line-height:1.5; margin-bottom:14px;">
+        上传文字 PNG，默认位于主元素上方。支持透明处理、配色、尺寸、位置、旋转和元素避让。
+      </p>
+
+      <div id="textLayerControls" style="display:none;">
+        <div style="display:flex; gap:14px; margin-bottom:10px; padding:9px 11px; background:var(--paper); border-radius:7px; font-size:11.5px;">
+          <span style="color:var(--ink-soft); font-weight:500; flex-shrink:0;">透明 PNG 模式：</span>
+          <label style="display:flex; align-items:center; gap:5px; cursor:pointer;">
+            <input type="radio" name="textUploadMode" value="tint" checked style="margin:0;">
+            <span>跟随配色</span>
+          </label>
+          <label style="display:flex; align-items:center; gap:5px; cursor:pointer;">
+            <input type="radio" name="textUploadMode" value="original" style="margin:0;">
+            <span>保留原色</span>
+          </label>
+        </div>
+
+        <div class="upload-zone" id="textUploadZone">
+          <input type="file" id="textFileInput" accept="image/*" style="display:none;">
+          <div id="textUploadPlaceholder">
+            <div style="font-size:22px; margin-bottom:6px;">T</div>
+            点击或拖拽上传文字图片<br>
+            <span style="font-size:10.5px; color:var(--ink-soft);">自动生成真正透明底 PNG</span>
+          </div>
+          <img id="textUploadPreview" style="display:none; max-width:100%; max-height:80px; object-fit:contain;">
+        </div>
+        <button class="btn btn-secondary" id="textClearUpload" style="width:100%; margin-top:8px; display:none; font-size:12px; padding:8px;">移除已上传文字</button>
+        <div id="textProcessingStatus" class="upload-processing-status" aria-live="polite"></div>
+
+        <div id="textColorControls">
+          <div class="group-label" style="margin-bottom:8px;">文字颜色</div>
+          <div class="swatch-row" id="textColorRow" style="margin-bottom:14px;"></div>
+        </div>
+
+        <div class="group-label" style="margin-bottom:8px;">文字尺寸<span class="val" id="textSizeVal">18%</span></div>
+        <input type="range" id="textSizePct" min="5" max="60" step="1" value="18">
+
+        <div class="group-label" style="margin:14px 0 8px;">文字上下位置<span class="val" id="textOffsetYVal">上移 22%</span></div>
+        <input type="range" id="textOffsetYPct" min="-45" max="40" step="1" value="-22">
+
+        <div class="group-label" style="margin:14px 0 8px;">文字旋转角度<span class="val" id="textRotationVal">0°</span></div>
+        <input type="range" id="textRotation" min="0" max="360" step="5" value="0">
+
+        <div class="toggle-row" style="margin-top:14px;">
+          <span style="font-size:12px; font-weight:600;">避让其他元素</span>
+          <div class="switch on" id="textAvoidSwitch"></div>
+        </div>
+        <div id="textAvoidControls" style="margin-top:10px;">
+          <div class="group-label" style="margin-bottom:8px;">文字图层避让距离<span class="val" id="textAvoidDistanceVal">8mm</span></div>
+          <input type="range" id="textAvoidDistanceMM" min="0" max="30" step="1" value="8">
+        </div>
       </div>
     </div>
 
@@ -1473,6 +1542,19 @@ let state = {
   heroSourceMode: 'builtin', // 'builtin' | 'upload'
   heroUploadMode: 'tint',    // 'tint' 跟随配色 | 'original' 保留原色
   heroCustomImage: null,     // 自定义上传图片的 dataURL
+  heroAvoidEnabled: true,
+  heroAvoidDistanceMM: 8,
+
+  // ── 文字图层 ──
+  textLayerEnabled: false,
+  textSizePct: 18,
+  textColor: '#2B2722',
+  textRotation: 0,
+  textOffsetYPct: -22,
+  textUploadMode: 'tint',
+  textCustomImage: null,
+  textAvoidEnabled: true,
+  textAvoidDistanceMM: 8,
   activeIconCategory: 'shape',
 
   // ── 自定义图标元素 ──
@@ -1492,6 +1574,7 @@ let zoomLevel = 1.2;
 const customImgEls = new Map();
 const customTintCache = new Map();
 const heroTintCache = new Map();
+const textTintCache = new Map();
 
 // 简单可复现随机数生成器 (mulberry32)
 function makeRng(seed) {
@@ -1636,6 +1719,40 @@ function buildHeroColorRow() {
     state.heroColor = e.target.value;
     buildHeroColorRow();
     updateHeroUploadPreview();
+    render();
+  };
+  row.appendChild(input);
+}
+
+function buildTextColorRow() {
+  const row = document.getElementById('textColorRow');
+  if (!row) return;
+  row.innerHTML = '';
+  HERO_COLOR_PRESETS.forEach(c => {
+    const sw = document.createElement('div');
+    sw.className = 'swatch' + (c.toLowerCase() === state.textColor.toLowerCase() ? ' active' : '');
+    sw.style.background = c;
+    if (c === '#FFFFFF') sw.style.border = '2px solid #DDD6C7';
+    sw.onclick = () => {
+      state.textColor = c;
+      buildTextColorRow();
+      updateTextUploadPreview();
+      render();
+    };
+    row.appendChild(sw);
+  });
+  const input = document.createElement('input');
+  input.type = 'color';
+  input.value = state.textColor;
+  input.style.width = '30px';
+  input.style.height = '30px';
+  input.style.border = '1.5px solid var(--line)';
+  input.style.borderRadius = '50%';
+  input.style.cursor = 'pointer';
+  input.oninput = (e) => {
+    state.textColor = e.target.value;
+    buildTextColorRow();
+    updateTextUploadPreview();
     render();
   };
   row.appendChild(input);
@@ -2283,6 +2400,14 @@ function syncSliderLabels() {
   document.getElementById('heroOffsetYVal').textContent = heroOffset === 0
     ? '居中'
     : heroOffset < 0 ? `上移 ${Math.abs(heroOffset)}%` : `下移 ${heroOffset}%`;
+  document.getElementById('heroAvoidDistanceVal').textContent = state.heroAvoidDistanceMM + 'mm';
+  document.getElementById('textSizeVal').textContent = state.textSizePct + '%';
+  const textOffset = state.textOffsetYPct;
+  document.getElementById('textOffsetYVal').textContent = textOffset === 0
+    ? '与主元素同高'
+    : textOffset < 0 ? `上移 ${Math.abs(textOffset)}%` : `下移 ${textOffset}%`;
+  document.getElementById('textRotationVal').textContent = state.textRotation + '°';
+  document.getElementById('textAvoidDistanceVal').textContent = state.textAvoidDistanceMM + 'mm';
   document.getElementById('filterIntensityVal').textContent = state.filterIntensity + '%';
 }
 
@@ -2710,7 +2835,9 @@ function render() {
   ctx.clip(); // 防止镶边部分画出画布边界
 
   placements.forEach(item => {
-    if (item.isHero && state.heroCustomImage) {
+    if (item.layerType === 'text') {
+      drawTextImageAt(ctx, item.x * mmToPx, item.y * mmToPx, item.angle, item.sizeMM * mmToPx);
+    } else if (item.isHero && state.heroCustomImage) {
       drawHeroImageAt(ctx, item.x * mmToPx, item.y * mmToPx, item.angle, item.sizeMM * mmToPx);
     } else {
       drawIconAt(ctx, item.x * mmToPx, item.y * mmToPx, item.angle, item.iconType, item.sizeMM * mmToPx, item.color, item.halfBox * mmToPx);
@@ -2746,16 +2873,25 @@ function render() {
 
 function drawHeroImageAt(ctx, x, y, angle, sizePx) {
   if (!state._heroImgEl) return; // 图片尚未加载完成
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(angle);
   const img = state.heroUploadMode === 'tint'
     ? getHeroTintedImage(state.heroColor)
     : state._heroImgEl;
-  if (!img) {
-    ctx.restore();
-    return;
-  }
+  drawRasterLayerImageAt(ctx, x, y, angle, sizePx, img);
+}
+
+function drawTextImageAt(ctx, x, y, angle, sizePx) {
+  if (!state._textImgEl) return;
+  const img = state.textUploadMode === 'tint'
+    ? getTextTintedImage(state.textColor)
+    : state._textImgEl;
+  drawRasterLayerImageAt(ctx, x, y, angle, sizePx, img);
+}
+
+function drawRasterLayerImageAt(ctx, x, y, angle, sizePx, img) {
+  if (!img) return;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
   const imageWidth = img.naturalWidth || img.width;
   const imageHeight = img.naturalHeight || img.height;
   const ratio = imageWidth / imageHeight || 1;
@@ -2766,11 +2902,18 @@ function drawHeroImageAt(ctx, x, y, angle, sizePx) {
 }
 
 function getHeroTintedImage(color) {
-  if (!state._heroImgEl) return null;
-  const cacheKey = color.toLowerCase();
-  if (heroTintCache.has(cacheKey)) return heroTintCache.get(cacheKey);
+  return getTintedLayerImage(state._heroImgEl, color, heroTintCache);
+}
 
-  const img = state._heroImgEl;
+function getTextTintedImage(color) {
+  return getTintedLayerImage(state._textImgEl, color, textTintCache);
+}
+
+function getTintedLayerImage(img, color, cache) {
+  if (!img) return null;
+  const cacheKey = color.toLowerCase();
+  if (cache.has(cacheKey)) return cache.get(cacheKey);
+
   const canvas = document.createElement('canvas');
   canvas.width = img.naturalWidth;
   canvas.height = img.naturalHeight;
@@ -2810,7 +2953,7 @@ function getHeroTintedImage(color) {
     }
   }
   ctx.putImageData(imageData, 0, 0);
-  heroTintCache.set(cacheKey, canvas);
+  cache.set(cacheKey, canvas);
   return canvas;
 }
 
@@ -2832,6 +2975,24 @@ function syncHeroUploadControls() {
   colorControls.style.display = (
     state.heroSourceMode === 'builtin' || state.heroUploadMode === 'tint'
   ) ? 'block' : 'none';
+}
+
+function updateTextUploadPreview() {
+  if (!state._textImgEl || !state.textCustomImage) return;
+  const preview = document.getElementById('textUploadPreview');
+  if (!preview) return;
+  if (state.textUploadMode === 'tint') {
+    const tinted = getTextTintedImage(state.textColor);
+    preview.src = tinted ? tinted.toDataURL('image/png') : state.textCustomImage;
+  } else {
+    preview.src = state.textCustomImage;
+  }
+}
+
+function syncTextUploadControls() {
+  const colorControls = document.getElementById('textColorControls');
+  if (!colorControls) return;
+  colorControls.style.display = state.textUploadMode === 'tint' ? 'block' : 'none';
 }
 
 function drawIconAt(ctx, x, y, angle, iconType, sizePx, color, halfBox) {
@@ -3101,14 +3262,209 @@ function renderSeamPreview() {
 
 // ═══════════════════════════════════════════════════════
 // 核心图案生成算法
-// 支持: 随机散布(防重叠) / 网格排列(整齐度可调) + 主元素图层
+// 支持: 随机散布 / 网格排列 + 主元素与文字图层避让
 // ═══════════════════════════════════════════════════════
+
+function getFocusLayerPlacements(dims) {
+  const focusLayers = [];
+  const heroY = dims.h / 2 + dims.h * ((state.heroEnabled ? state.heroOffsetYPct : 0) / 100);
+
+  if (state.heroEnabled && state.heroIcon) {
+    const sizeMM = Math.min(dims.w, dims.h) * (state.heroSizePct / 100);
+    focusLayers.push({
+      x: dims.w / 2,
+      y: heroY,
+      angle: (state.heroRotation || 0) * Math.PI / 180,
+      iconType: state.heroIcon,
+      sizeMM,
+      color: state.heroColor || state.colors[0],
+      halfBox: sizeMM * 0.75,
+      avoidEnabled: state.heroAvoidEnabled,
+      avoidDistanceMM: state.heroAvoidDistanceMM,
+      layerType: 'hero',
+      isHero: true,
+    });
+  }
+
+  if (state.textLayerEnabled && state.textCustomImage && state._textImgEl) {
+    const sizeMM = Math.min(dims.w, dims.h) * (state.textSizePct / 100);
+    focusLayers.push({
+      x: dims.w / 2,
+      y: heroY + dims.h * (state.textOffsetYPct / 100),
+      angle: (state.textRotation || 0) * Math.PI / 180,
+      iconType: null,
+      sizeMM,
+      color: state.textColor,
+      halfBox: sizeMM * 0.75,
+      avoidEnabled: state.textAvoidEnabled,
+      avoidDistanceMM: state.textAvoidDistanceMM,
+      layerType: 'text',
+      isTextLayer: true,
+    });
+  }
+
+  focusLayers.forEach(focus => {
+    if (focus.avoidEnabled) {
+      focus.distanceField = buildFocusLayerDistanceField(focus, dims);
+    }
+  });
+  return focusLayers;
+}
+
+// 将主元素或文字 PNG 按实际透明像素合成为蒙版，避免透明留白被误算成安全区。
+function drawFocusLayerMask(ctx, focus, scale, xOffsetMM = 0) {
+  const x = (focus.x + xOffsetMM) * scale;
+  const y = focus.y * scale;
+  const size = focus.sizeMM * scale;
+  if (focus.layerType === 'text') {
+    drawTextImageAt(ctx, x, y, focus.angle, size);
+  } else if (state.heroCustomImage && state._heroImgEl) {
+    drawHeroImageAt(ctx, x, y, focus.angle, size);
+  } else {
+    drawIconAt(ctx, x, y, focus.angle, focus.iconType, size, '#000000', focus.halfBox * scale);
+  }
+}
+
+function distanceTransform1D(values) {
+  const length = values.length;
+  const result = new Float64Array(length);
+  const sites = new Int32Array(length);
+  const boundaries = new Float64Array(length + 1);
+  let lastSite = -1;
+
+  for (let q = 0; q < length; q++) {
+    if (!Number.isFinite(values[q])) continue;
+    if (lastSite < 0) {
+      lastSite = 0;
+      sites[0] = q;
+      boundaries[0] = -Infinity;
+      boundaries[1] = Infinity;
+      continue;
+    }
+
+    let intersection;
+    while (true) {
+      const previous = sites[lastSite];
+      intersection = (
+        (values[q] + q * q) - (values[previous] + previous * previous)
+      ) / (2 * (q - previous));
+      if (intersection > boundaries[lastSite] || lastSite === 0) break;
+      lastSite--;
+    }
+
+    if (intersection <= boundaries[lastSite]) {
+      sites[0] = q;
+      boundaries[0] = -Infinity;
+      boundaries[1] = Infinity;
+      lastSite = 0;
+    } else {
+      lastSite++;
+      sites[lastSite] = q;
+      boundaries[lastSite] = intersection;
+      boundaries[lastSite + 1] = Infinity;
+    }
+  }
+
+  if (lastSite < 0) {
+    result.fill(Infinity);
+    return result;
+  }
+
+  let siteIndex = 0;
+  for (let q = 0; q < length; q++) {
+    while (boundaries[siteIndex + 1] < q) siteIndex++;
+    const delta = q - sites[siteIndex];
+    result[q] = delta * delta + values[sites[siteIndex]];
+  }
+  return result;
+}
+
+function buildFocusLayerDistanceField(focus, dims) {
+  const scale = 2;
+  const width = Math.max(1, Math.ceil(dims.w * scale));
+  const height = Math.max(1, Math.ceil(dims.h * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.clearRect(0, 0, width, height);
+  drawFocusLayerMask(ctx, focus, scale);
+  if (state.seamMode === 'wrap') {
+    drawFocusLayerMask(ctx, focus, scale, -dims.w);
+    drawFocusLayerMask(ctx, focus, scale, dims.w);
+  }
+
+  const alpha = ctx.getImageData(0, 0, width, height).data;
+  const rowPass = new Float64Array(width * height);
+  let hasOpaquePixel = false;
+
+  for (let y = 0; y < height; y++) {
+    const row = new Float64Array(width);
+    row.fill(Infinity);
+    for (let x = 0; x < width; x++) {
+      if (alpha[(y * width + x) * 4 + 3] > 0) {
+        row[x] = 0;
+        hasOpaquePixel = true;
+      }
+    }
+    rowPass.set(distanceTransform1D(row), y * width);
+  }
+
+  if (!hasOpaquePixel) return null;
+
+  const squaredDistances = new Float32Array(width * height);
+  for (let x = 0; x < width; x++) {
+    const column = new Float64Array(height);
+    for (let y = 0; y < height; y++) {
+      column[y] = rowPass[y * width + x];
+    }
+    const transformed = distanceTransform1D(column);
+    for (let y = 0; y < height; y++) {
+      squaredDistances[y * width + x] = transformed[y];
+    }
+  }
+
+  return { width, height, scale, squaredDistances };
+}
+
+function getFocusLayerDistanceMM(x, y, focus, dims) {
+  const field = focus.distanceField;
+  if (!field) {
+    return Math.max(0, Math.hypot(x - focus.x, y - focus.y) - focus.halfBox);
+  }
+
+  const sampleX = state.seamMode === 'wrap'
+    ? ((x % dims.w) + dims.w) % dims.w
+    : x;
+  const pixelX = Math.round(sampleX * field.scale);
+  const pixelY = Math.round(y * field.scale);
+  if (pixelX < 0 || pixelX >= field.width || pixelY < 0 || pixelY >= field.height) {
+    return Infinity;
+  }
+
+  const squared = field.squaredDistances[pixelY * field.width + pixelX];
+  return Math.sqrt(squared) / field.scale;
+}
+
+function collidesWithFocusLayer(x, y, halfBox, focusLayers, dims) {
+  for (const focus of focusLayers) {
+    if (!focus.avoidEnabled) continue;
+    // 加一个像素对角线的容差，抵消蒙版离散化，确保不会因采样误差进入安全区。
+    const rasterToleranceMM = focus.distanceField
+      ? Math.SQRT2 / focus.distanceField.scale
+      : 0;
+    const minDistance = halfBox + focus.avoidDistanceMM + rasterToleranceMM;
+    if (getFocusLayerDistanceMM(x, y, focus, dims) < minDistance) return true;
+  }
+  return false;
+}
 
 function getPatternPlacements(dims) {
   const rng = makeRng(state.seed);
   const icons = Array.from(state.activeIcons);
   const placements = [];
-  if (icons.length === 0) return placements;
+  const focusLayers = getFocusLayerPlacements(dims);
+  if (icons.length === 0) return focusLayers;
 
   const placeMinX = (state.seamMode === 'margin') ? state.edgeMargin : 0;
   const placeMaxX = (state.seamMode === 'margin') ? (dims.w - state.edgeMargin) : dims.w;
@@ -3179,6 +3535,7 @@ function getPatternPlacements(dims) {
 
         const sizeMM = state.sizeMin + rng() * (state.sizeMax - state.sizeMin);
         const halfBox = sizeMM * 0.75;
+        if (collidesWithFocusLayer(x, y, halfBox, focusLayers, dims)) continue;
 
         // ── 抖动防重叠保护 ──────────────────────────────
         // 高整齐度数值(抖动大)时，相邻格子的点可能因为抖动方向相同而互相靠近甚至重叠，
@@ -3221,6 +3578,9 @@ function getPatternPlacements(dims) {
           }
         }
 
+        // 抖动收缩后再次检查焦点图层，避免回归网格中心时进入避让范围。
+        if (collidesWithFocusLayer(x, y, halfBox, focusLayers, dims)) continue;
+
         // 整齐度高时角度也更统一；扰动大时角度更随机
         const angleRandomness = (regularity / 100);
         const angle = (rng() - 0.5) * 2 * Math.PI * (state.rotation / 100) * Math.max(angleRandomness, 0.15);
@@ -3229,6 +3589,7 @@ function getPatternPlacements(dims) {
 
         if (state.seamMode === 'margin') {
           const clampedX = Math.min(Math.max(x, placeMinX + halfBox), placeMaxX - halfBox);
+          if (collidesWithFocusLayer(clampedX, y, halfBox, focusLayers, dims)) continue;
           placements.push({ x: clampedX, y, angle, iconType, sizeMM, color, halfBox });
         } else if (offsetMode === 'none') {
           // none(整齐对齐)模式没有左右补列，仍需要 addWithWrap 来处理 wrap 接缝镶边
@@ -3259,6 +3620,7 @@ function getPatternPlacements(dims) {
       const y = rng() * dims.h;
       const sizeMM = state.sizeMin + rng() * (state.sizeMax - state.sizeMin);
       const halfBox = sizeMM * 0.75;
+      if (collidesWithFocusLayer(x, y, halfBox, focusLayers, dims)) continue;
 
       // 碰撞检测：与已放置的图标距离是否足够（spacingFactor 控制松紧）
       let collision = false;
@@ -3285,6 +3647,7 @@ function getPatternPlacements(dims) {
 
       if (state.seamMode === 'margin') {
         const clampedX = Math.min(Math.max(x, placeMinX + halfBox), placeMaxX - halfBox);
+        if (collidesWithFocusLayer(clampedX, y, halfBox, focusLayers, dims)) continue;
         placements.push({ x: clampedX, y, angle, iconType, sizeMM, color, halfBox });
       } else {
         addWithWrap({ x, y, angle, iconType, sizeMM, color, halfBox });
@@ -3298,20 +3661,7 @@ function getPatternPlacements(dims) {
     state._lastPlacementShortfall = (placedCount < targetCount * 0.7);
   }
 
-  // ══════════ 主元素图层：在画布中心叠加一个更大的焦点图案 ══════════
-  if (state.heroEnabled && state.heroIcon) {
-    const heroSizeMM = Math.min(dims.w, dims.h) * (state.heroSizePct / 100);
-    placements.push({
-      x: dims.w / 2,
-      y: dims.h / 2 + dims.h * (state.heroOffsetYPct / 100),
-      angle: (state.heroRotation || 0) * Math.PI / 180,
-      iconType: state.heroIcon,
-      sizeMM: heroSizeMM,
-      color: state.heroColor || state.colors[0],
-      halfBox: heroSizeMM * 0.75,
-      isHero: true,
-    });
-  }
+  placements.push(...focusLayers);
 
   return placements;
 }
@@ -3331,7 +3681,9 @@ function drawPatternToCanvas(canvas, dpi) {
   ctx.rect(0, 0, canvas.width, canvas.height);
   ctx.clip();
   getPatternPlacements(dims).forEach(item => {
-    if (item.isHero && state.heroCustomImage) {
+    if (item.layerType === 'text') {
+      drawTextImageAt(ctx, item.x * mmToPx, item.y * mmToPx, item.angle, item.sizeMM * mmToPx);
+    } else if (item.isHero && state.heroCustomImage) {
       drawHeroImageAt(ctx, item.x * mmToPx, item.y * mmToPx, item.angle, item.sizeMM * mmToPx);
     } else {
       drawIconAt(ctx, item.x * mmToPx, item.y * mmToPx, item.angle, item.iconType, item.sizeMM * mmToPx, item.color, item.halfBox * mmToPx);
@@ -3572,10 +3924,15 @@ function exportVectorPdf() {
   stream += `q\n0 0 ${pdfNum(pageW)} ${pdfNum(pageH)} re W n\n`;
 
   let skippedCustomHero = false;
+  let skippedTextLayer = false;
   let skippedTextIcons = 0;
   let skippedCustomIcons = 0;
 
   getPatternPlacements(dims).forEach(item => {
+    if (item.layerType === 'text') {
+      skippedTextLayer = true;
+      return;
+    }
     if (item.isHero && state.heroCustomImage) {
       skippedCustomHero = true;
       return;
@@ -3610,9 +3967,10 @@ function exportVectorPdf() {
   const blob = new Blob([buildPdf(objects)], { type: 'application/pdf' });
   downloadBlob(blob, `碎花图案_${dims.w}x${dims.h}mm_vector.pdf`);
 
-  if (skippedCustomHero || skippedTextIcons > 0 || skippedCustomIcons > 0 || hasFilter) {
+  if (skippedCustomHero || skippedTextLayer || skippedTextIcons > 0 || skippedCustomIcons > 0 || hasFilter) {
     let msg = '矢量 PDF 导出完成，但有以下内容做了简化处理：\n';
     if (skippedCustomHero) msg += '· 自定义上传的主元素图片无法转为矢量路径，已跳过\n';
+    if (skippedTextLayer) msg += '· 上传的文字图层无法转为矢量路径，已跳过\n';
     if (skippedTextIcons > 0) msg += `· ${skippedTextIcons} 个 Emoji/数字/符号类图标无法转为矢量路径，已用圆点占位\n`;
     if (skippedCustomIcons > 0) msg += `· ${skippedCustomIcons} 个自定义上传的图标无法转为矢量路径，已用圆点占位\n`;
     if (hasFilter) msg += '· 已选择的滤镜效果未应用（矢量PDF不支持滤镜）。如需保留滤镜，请勾选"PDF中应用滤镜"选项重新导出（会变为位图嵌入式PDF）\n';
@@ -3778,6 +4136,17 @@ document.getElementById('heroRotation').oninput = (e) => {
   syncSliderLabels();
   render();
 };
+document.getElementById('heroAvoidSwitch').onclick = (e) => {
+  state.heroAvoidEnabled = !state.heroAvoidEnabled;
+  e.target.classList.toggle('on', state.heroAvoidEnabled);
+  document.getElementById('heroAvoidControls').style.display = state.heroAvoidEnabled ? 'block' : 'none';
+  render();
+};
+document.getElementById('heroAvoidDistanceMM').oninput = (e) => {
+  state.heroAvoidDistanceMM = parseFloat(e.target.value);
+  syncSliderLabels();
+  render();
+};
 
 document.getElementById('heroTabBuiltin').onclick = () => {
   state.heroSourceMode = 'builtin';
@@ -3865,6 +4234,108 @@ document.getElementById('heroClearUpload').onclick = (e) => {
   document.getElementById('heroUploadPreview').style.display = 'none';
   document.getElementById('heroClearUpload').style.display = 'none';
   setUploadProcessingStatus('heroProcessingStatus', '');
+  render();
+};
+
+// ── 文字图层 ──
+document.getElementById('textLayerSwitch').onclick = (e) => {
+  state.textLayerEnabled = !state.textLayerEnabled;
+  e.target.classList.toggle('on', state.textLayerEnabled);
+  document.getElementById('textLayerControls').style.display = state.textLayerEnabled ? 'block' : 'none';
+  syncTextUploadControls();
+  render();
+};
+document.querySelectorAll('input[name="textUploadMode"]').forEach(input => {
+  input.onchange = () => {
+    state.textUploadMode = input.value;
+    syncTextUploadControls();
+    updateTextUploadPreview();
+    if (state.textCustomImage) {
+      const modeText = state.textUploadMode === 'tint' ? '跟随配色的透明 PNG' : '保留原色的透明 PNG';
+      setUploadProcessingStatus('textProcessingStatus', `当前显示${modeText}`);
+    }
+    render();
+  };
+});
+document.getElementById('textSizePct').oninput = (e) => {
+  state.textSizePct = parseFloat(e.target.value);
+  syncSliderLabels();
+  render();
+};
+document.getElementById('textOffsetYPct').oninput = (e) => {
+  state.textOffsetYPct = parseFloat(e.target.value);
+  syncSliderLabels();
+  render();
+};
+document.getElementById('textRotation').oninput = (e) => {
+  state.textRotation = parseFloat(e.target.value);
+  syncSliderLabels();
+  render();
+};
+document.getElementById('textAvoidSwitch').onclick = (e) => {
+  state.textAvoidEnabled = !state.textAvoidEnabled;
+  e.target.classList.toggle('on', state.textAvoidEnabled);
+  document.getElementById('textAvoidControls').style.display = state.textAvoidEnabled ? 'block' : 'none';
+  render();
+};
+document.getElementById('textAvoidDistanceMM').oninput = (e) => {
+  state.textAvoidDistanceMM = parseFloat(e.target.value);
+  syncSliderLabels();
+  render();
+};
+
+const textUploadZone = document.getElementById('textUploadZone');
+const textFileInput = document.getElementById('textFileInput');
+
+async function handleTextFile(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  setUploadProcessingStatus('textProcessingStatus', '正在生成文字透明 PNG…', 'processing');
+  try {
+    state.textCustomImage = await convertUploadToTransparentPng(file, 1536, 'original');
+    const img = new Image();
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = () => reject(new Error('转换后的文字图片加载失败'));
+      img.src = state.textCustomImage;
+    });
+    state._textImgEl = img;
+    textTintCache.clear();
+    document.getElementById('textUploadPlaceholder').style.display = 'none';
+    const preview = document.getElementById('textUploadPreview');
+    updateTextUploadPreview();
+    preview.style.display = 'block';
+    document.getElementById('textClearUpload').style.display = 'block';
+    const modeText = state.textUploadMode === 'tint' ? '跟随配色的透明 PNG' : '保留原色的透明 PNG';
+    setUploadProcessingStatus('textProcessingStatus', `已生成${modeText}`);
+    render();
+  } catch (error) {
+    console.error(error);
+    state.textCustomImage = null;
+    state._textImgEl = null;
+    setUploadProcessingStatus('textProcessingStatus', error.message, 'error');
+  } finally {
+    textFileInput.value = '';
+  }
+}
+
+textUploadZone.onclick = () => textFileInput.click();
+textFileInput.onchange = (e) => handleTextFile(e.target.files[0]);
+textUploadZone.ondragover = (e) => { e.preventDefault(); textUploadZone.classList.add('dragover'); };
+textUploadZone.ondragleave = () => textUploadZone.classList.remove('dragover');
+textUploadZone.ondrop = (e) => {
+  e.preventDefault();
+  textUploadZone.classList.remove('dragover');
+  handleTextFile(e.dataTransfer.files[0]);
+};
+document.getElementById('textClearUpload').onclick = (e) => {
+  e.stopPropagation();
+  state.textCustomImage = null;
+  state._textImgEl = null;
+  textTintCache.clear();
+  document.getElementById('textUploadPlaceholder').style.display = 'block';
+  document.getElementById('textUploadPreview').style.display = 'none';
+  document.getElementById('textClearUpload').style.display = 'none';
+  setUploadProcessingStatus('textProcessingStatus', '');
   render();
 };
 
@@ -4002,6 +4473,8 @@ buildLayoutModeRow();
 buildLayoutOffsetRow();
 buildHeroIconGrid();
 buildHeroColorRow();
+buildTextColorRow();
+syncTextUploadControls();
 buildCupOptionRow();
 buildLidColorRow();
 buildFilterGrid();
