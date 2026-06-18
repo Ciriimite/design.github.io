@@ -328,6 +328,13 @@ input[type="range"]::-moz-range-thumb {
   justify-content: center;
 }
 
+.color-input-swatch {
+  width: 30px; height: 30px;
+  border: 1.5px solid var(--line);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
 .preset-row {
   display: flex;
   gap: 8px;
@@ -442,10 +449,12 @@ select {
   border-radius: 4px;
   background: white;
   overflow: hidden;
+  contain: layout style paint;
 }
 
 #patternCanvas {
   display: block;
+  will-change: contents;
 }
 
 .dims-label {
@@ -820,9 +829,9 @@ select {
 
       <!-- 自定义图标上传面板（仅在选中"自定义"分类Tab时显示） -->
       <div id="customIconPanel" style="display:none; margin-bottom:12px;">
-        <input type="file" id="customIconFileInput" accept="image/*" multiple style="display:none;">
+        <input type="file" id="customIconFileInput" accept="image/*,.pdf,.svg,.ai" multiple style="display:none;">
         <button type="button" id="customIconUploadBtn" class="btn btn-secondary" style="width:100%; padding:9px; font-size:12.5px;">
-          ⬆ 上传新图标（支持多选）
+          ⬆ 上传新图标（支持图片/PDF/SVG，可多选）
         </button>
         <div style="display:flex; gap:14px; margin-top:10px; padding:9px 11px; background:var(--paper); border-radius:7px; font-size:11.5px;">
           <span style="color:var(--ink-soft); font-weight:500; flex-shrink:0;">上传后颜色：</span>
@@ -949,11 +958,11 @@ select {
             </label>
           </div>
           <div class="upload-zone" id="heroUploadZone">
-            <input type="file" id="heroFileInput" accept="image/*" style="display:none;">
+            <input type="file" id="heroFileInput" accept="image/*,.pdf,.svg,.ai" style="display:none;">
             <div id="heroUploadPlaceholder">
               <div style="font-size:22px; margin-bottom:6px;">⬆</div>
-              点击或拖拽上传图片<br>
-              <span style="font-size:10.5px; color:var(--ink-soft);">建议使用透明背景 PNG</span>
+              点击或拖拽上传图片 / PDF / SVG<br>
+              <span style="font-size:10.5px; color:var(--ink-soft);">支持 PNG/JPG/PDF/SVG/AI，透明背景效果最佳</span>
             </div>
             <img id="heroUploadPreview" style="display:none; max-width:100%; max-height:80px; object-fit:contain;">
           </div>
@@ -993,7 +1002,7 @@ select {
         <div class="switch" id="textLayerSwitch"></div>
       </div>
       <p style="font-size:11.5px; color:var(--ink-soft); line-height:1.5; margin-bottom:14px;">
-        上传文字 PNG，默认位于主元素上方。支持透明处理、配色、尺寸、位置、旋转和元素避让。
+        上传文字图片或矢量文件（PDF/SVG/AI），默认位于主元素上方。支持透明处理、配色、尺寸、位置、旋转和元素避让。
       </p>
 
       <div id="textLayerControls" style="display:none;">
@@ -1010,10 +1019,10 @@ select {
         </div>
 
         <div class="upload-zone" id="textUploadZone">
-          <input type="file" id="textFileInput" accept="image/*" style="display:none;">
+          <input type="file" id="textFileInput" accept="image/*,.pdf,.svg,.ai" style="display:none;">
           <div id="textUploadPlaceholder">
             <div style="font-size:22px; margin-bottom:6px;">T</div>
-            点击或拖拽上传文字图片<br>
+            点击或拖拽上传文字图片 / PDF / SVG<br>
             <span style="font-size:10.5px; color:var(--ink-soft);">自动生成真正透明底 PNG</span>
           </div>
           <img id="textUploadPreview" style="display:none; max-width:100%; max-height:80px; object-fit:contain;">
@@ -1117,22 +1126,38 @@ select {
     </div>
 
     <div class="group">
-      <div class="group-label">导出规格</div>
-      <select id="exportMode">
-        <option value="png-300">PNG · 300 DPI</option>
-        <option value="png-720">PNG · 720 DPI</option>
-        <option value="png-1440">PNG · 1440 DPI</option>
-        <option value="pdf-vector">矢量 PDF</option>
-      </select>
+      <div class="group-label">导出格式</div>
+      <div class="hero-tab-row" id="exportFormatRow">
+        <div class="hero-tab active" data-format="png">PNG 位图</div>
+        <div class="hero-tab" data-format="pdf">PDF 文件</div>
+      </div>
+
+      <div class="group-label" style="margin-top:14px;">导出精度 (DPI)</div>
+      <div class="preset-row" id="exportDpiRow">
+        <div class="preset-btn active" data-dpi="300">300 DPI</div>
+        <div class="preset-btn" data-dpi="720">720 DPI</div>
+        <div class="preset-btn" data-dpi="1440">1440 DPI</div>
+      </div>
       <p style="font-size:11px; color:var(--ink-soft); margin-top:8px; line-height:1.5;">
-        高 DPI PNG 适合直接打样；矢量 PDF 保留图形路径，适合交给工厂继续缩放检查。
+        300 适合屏幕预览和快速打样；720 适合高清打印；1440 适合大幅面精细输出。
       </p>
 
-      <div id="pdfFilterOption" style="display:none; margin-top:14px; padding:10px 12px; background:var(--accent-soft); border-radius:8px;">
-        <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer; font-size:12px; line-height:1.5;">
-          <input type="checkbox" id="includeFilterInPdf" style="margin-top:2px; flex-shrink:0;">
-          <span><strong style="color:var(--accent);">在 PDF 中保留滤镜效果</strong><br>
-          <span style="color:var(--ink-soft); font-size:11px;">⚠ 警告：勾选后 PDF 将变为位图嵌入式（不再是矢量），文件会变大、放大后可能模糊、工厂可能无法直接重新调整尺寸。如果你需要工厂可缩放的纯净矢量稿，请保持不勾选。</span></span>
+      <div id="pdfSkipOptions" style="display:none; margin-top:14px; padding:10px 12px; background:var(--paper); border:1px solid var(--line); border-radius:8px;">
+        <div style="font-size:11px; font-weight:600; color:var(--ink); margin-bottom:10px;">PDF 导出时跳过以下元素（默认全部保留）：</div>
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12px; margin-bottom:6px;">
+          <input type="checkbox" id="pdfSkipHeroImage" style="flex-shrink:0;"> 主元素上传图片
+        </label>
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12px; margin-bottom:6px;">
+          <input type="checkbox" id="pdfSkipTextLayer" style="flex-shrink:0;"> 文字图层
+        </label>
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12px; margin-bottom:6px;">
+          <input type="checkbox" id="pdfSkipEmojiIcons" style="flex-shrink:0;"> Emoji / 数字 / 符号图标
+        </label>
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12px; margin-bottom:6px;">
+          <input type="checkbox" id="pdfSkipCustomIcons" style="flex-shrink:0;"> 自定义上传图标
+        </label>
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12px;">
+          <input type="checkbox" id="pdfSkipFilter" style="flex-shrink:0;"> 风格滤镜效果
         </label>
       </div>
     </div>
@@ -1196,6 +1221,20 @@ select {
 </div>
 
 <script>
+// ── DOM 缓存：高频查询的元素在首次访问后缓存 ──
+const $domCache = {};
+function $(id) {
+  return $domCache[id] || ($domCache[id] = document.getElementById(id));
+}
+function $qs(sel) {
+  const key = 'qs:' + sel;
+  return $domCache[key] || ($domCache[key] = document.querySelector(sel));
+}
+function $qsa(sel) {
+  // querySelectorAll 结果可能变化（动态增删），不做长期缓存
+  return document.querySelectorAll(sel);
+}
+
 // ═══════════════════════════════════════════════════════
 // 数据定义
 // ═══════════════════════════════════════════════════════
@@ -1522,7 +1561,14 @@ let state = {
   previewMode: 'flat',
   cupModel: 'red',
   lidColor: CUP_MODELS.red.defaultLid,
-  exportMode: 'png-300',
+  exportFormat: 'png',       // 'png' | 'pdf'
+  exportDpi: 300,            // 300 | 720 | 1440
+  // PDF 导出时跳过的元素（默认全部不打勾 = 全部保留）
+  pdfSkipHeroImage: false,
+  pdfSkipTextLayer: false,
+  pdfSkipEmojiIcons: false,
+  pdfSkipCustomIcons: false,
+  pdfSkipFilter: false,
 
   // ── 新增：重叠程度 (0=完全不重叠默认, 100=允许大量重叠) ──
   overlapAllowance: 0,
@@ -1565,7 +1611,6 @@ let state = {
   // ── 整体风格滤镜 ──
   filterStyle: 'none', // 滤镜样式键名，参见 FILTER_STYLES
   filterIntensity: 70, // 滤镜整体强度 0-100
-  includeFilterInPdf: false, // 矢量PDF导出时是否同样应用滤镜（默认否，保持矢量纯净）
 };
 
 let zoomLevel = 1.2;
@@ -1664,7 +1709,82 @@ function buildLayoutOffsetRow() {
   });
 }
 
-// ── 主元素图层: 内置图标网格 ──
+// ── 事件委托：统一处理高频网格的点击，避免逐个绑定 onclick 导致大量 DOM 重建开销 ──
+function setupEventDelegation() {
+  // 图标分类 Tab
+  const tabRow = document.getElementById('iconCategoryTabs');
+  if (tabRow) {
+    tabRow.onclick = (e) => {
+      const tab = e.target.closest('.cat-tab');
+      if (!tab) return;
+      const catKey = tab.dataset.catKey;
+      if (!catKey || catKey === state.activeIconCategory) return;
+      state.activeIconCategory = catKey;
+      buildIconGrid();
+    };
+  }
+
+  // 主图标网格（内置 + 自定义）
+  const iconGrid = document.getElementById('iconGrid');
+  if (iconGrid) {
+    iconGrid.onclick = (e) => {
+      // 删除按钮保持独立处理
+      if (e.target.closest('.custom-icon-del')) return;
+      const toggle = e.target.closest('.icon-toggle');
+      if (!toggle) return;
+
+      const iconKey = toggle.dataset.iconKey;
+      const customId = toggle.dataset.customId;
+
+      if (iconKey) {
+        if (state.activeIcons.has(iconKey)) {
+          if (state.activeIcons.size > 1) state.activeIcons.delete(iconKey);
+        } else {
+          state.activeIcons.add(iconKey);
+        }
+      } else if (customId) {
+        if (state.activeIcons.has(customId)) {
+          if (state.activeIcons.size > 1) state.activeIcons.delete(customId);
+        } else {
+          state.activeIcons.add(customId);
+        }
+      }
+      buildIconGrid();
+      render();
+    };
+  }
+
+  // 主元素图标网格
+  const heroGrid = document.getElementById('heroIconGrid');
+  if (heroGrid) {
+    heroGrid.onclick = (e) => {
+      const toggle = e.target.closest('.icon-toggle');
+      if (!toggle) return;
+      const heroKey = toggle.dataset.heroKey;
+      if (!heroKey || heroKey === state.heroIcon) return;
+      state.heroIcon = heroKey;
+      buildHeroIconGrid();
+      render();
+    };
+  }
+
+  // 风格滤镜网格
+  const filterGrid = document.getElementById('filterGrid');
+  if (filterGrid) {
+    filterGrid.onclick = (e) => {
+      const cell = e.target.closest('.filter-cell');
+      if (!cell) return;
+      const filterKey = cell.dataset.filterKey;
+      if (!filterKey || filterKey === state.filterStyle) return;
+      state.filterStyle = filterKey;
+      const intensityControl = document.getElementById('filterIntensityControl');
+      if (intensityControl) intensityControl.style.display = (filterKey === 'none') ? 'none' : 'block';
+      updateExportUi();
+      buildFilterGrid();
+      render();
+    };
+  }
+}
 function buildHeroIconGrid() {
   const grid = document.getElementById('heroIconGrid');
   if (!grid) return;
@@ -1679,11 +1799,7 @@ function buildHeroIconGrid() {
     el.className = 'icon-toggle' + (state.heroIcon === key ? ' active' : '');
     el.textContent = icon.emoji;
     el.title = icon.label;
-    el.onclick = () => {
-      state.heroIcon = key;
-      buildHeroIconGrid();
-      render();
-    };
+    el.dataset.heroKey = key;
     grid.appendChild(el);
   });
 }
@@ -1710,11 +1826,7 @@ function buildHeroColorRow() {
   const input = document.createElement('input');
   input.type = 'color';
   input.value = state.heroColor;
-  input.style.width = '30px';
-  input.style.height = '30px';
-  input.style.border = '1.5px solid var(--line)';
-  input.style.borderRadius = '50%';
-  input.style.cursor = 'pointer';
+  input.className = 'color-input-swatch';
   input.oninput = (e) => {
     state.heroColor = e.target.value;
     buildHeroColorRow();
@@ -1744,11 +1856,7 @@ function buildTextColorRow() {
   const input = document.createElement('input');
   input.type = 'color';
   input.value = state.textColor;
-  input.style.width = '30px';
-  input.style.height = '30px';
-  input.style.border = '1.5px solid var(--line)';
-  input.style.borderRadius = '50%';
-  input.style.cursor = 'pointer';
+  input.className = 'color-input-swatch';
   input.oninput = (e) => {
     state.textColor = e.target.value;
     buildTextColorRow();
@@ -1785,24 +1893,39 @@ function buildFilterGrid() {
     name.textContent = style.name;
     cell.appendChild(name);
 
-    cell.onclick = () => {
-      state.filterStyle = key;
-      const intensityControl = document.getElementById('filterIntensityControl');
-      if (intensityControl) intensityControl.style.display = (key === 'none') ? 'none' : 'block';
-      updatePdfFilterOptionVisibility();
-      buildFilterGrid();
-      render();
-    };
+    cell.dataset.filterKey = key;
     grid.appendChild(cell);
   });
 }
 
-function updatePdfFilterOptionVisibility() {
-  const opt = document.getElementById('pdfFilterOption');
-  if (!opt) return;
-  const hasFilter = state.filterStyle && state.filterStyle !== 'none';
-  const isPdf = state.exportMode === 'pdf-vector';
-  opt.style.display = (hasFilter && isPdf) ? 'block' : 'none';
+function updateExportUi() {
+  // 显示/隐藏 PDF 跳过选项
+  const skipPanel = document.getElementById('pdfSkipOptions');
+  if (skipPanel) {
+    skipPanel.style.display = state.exportFormat === 'pdf' ? 'block' : 'none';
+  }
+
+  // 更新 PDF 跳过选项中的复选框勾选与禁用状态
+  const skipHero = document.getElementById('pdfSkipHeroImage');
+  const skipText = document.getElementById('pdfSkipTextLayer');
+  const skipEmoji = document.getElementById('pdfSkipEmojiIcons');
+  const skipCustom = document.getElementById('pdfSkipCustomIcons');
+  const skipFilter = document.getElementById('pdfSkipFilter');
+
+  if (skipHero) {
+    skipHero.checked = state.pdfSkipHeroImage;
+    skipHero.disabled = !(state.heroEnabled && state.heroCustomImage && state.heroSourceMode === 'upload');
+  }
+  if (skipText) {
+    skipText.checked = state.pdfSkipTextLayer;
+    skipText.disabled = !(state.textLayerEnabled && state.textCustomImage);
+  }
+  if (skipEmoji) skipEmoji.checked = state.pdfSkipEmojiIcons;
+  if (skipCustom) skipCustom.checked = state.pdfSkipCustomIcons;
+  if (skipFilter) {
+    skipFilter.checked = state.pdfSkipFilter;
+    skipFilter.disabled = !(state.filterStyle && state.filterStyle !== 'none');
+  }
 }
 
 function buildPresetRow() {
@@ -1856,10 +1979,7 @@ function buildIconGrid() {
       const tab = document.createElement('div');
       tab.className = 'cat-tab' + (state.activeIconCategory === catKey ? ' active' : '');
       tab.textContent = `${cat.icon} ${cat.name}`;
-      tab.onclick = () => {
-        state.activeIconCategory = catKey;
-        buildIconGrid();
-      };
+      tab.dataset.catKey = catKey;
       tabRow.appendChild(tab);
     });
   }
@@ -1907,15 +2027,8 @@ function buildIconGrid() {
         };
         el.appendChild(delBtn);
 
-        el.onclick = () => {
-          if (state.activeIcons.has(custom.id)) {
-            if (state.activeIcons.size > 1) state.activeIcons.delete(custom.id);
-          } else {
-            state.activeIcons.add(custom.id);
-          }
-          buildIconGrid();
-          render();
-        };
+        el.dataset.customId = custom.id;
+        el.appendChild(delBtn);
         grid.appendChild(el);
       });
     }
@@ -1928,15 +2041,7 @@ function buildIconGrid() {
         el.className = 'icon-toggle' + (state.activeIcons.has(key) ? ' active' : '');
         el.textContent = icon.emoji;
         el.title = icon.label;
-        el.onclick = () => {
-          if (state.activeIcons.has(key)) {
-            if (state.activeIcons.size > 1) state.activeIcons.delete(key);
-          } else {
-            state.activeIcons.add(key);
-          }
-          buildIconGrid();
-          render();
-        };
+        el.dataset.iconKey = key;
         grid.appendChild(el);
       });
   }
@@ -1957,6 +2062,108 @@ function loadImageFile(file) {
     };
     reader.readAsDataURL(file);
   });
+}
+
+// ── 矢量文件渲染：PDF / SVG / AI → Image ──
+let _pdfjsLib = null;
+let _pdfjsLoading = null;
+
+async function _ensurePdfJs() {
+  if (_pdfjsLib) return _pdfjsLib;
+  if (_pdfjsLoading) return _pdfjsLoading;
+  _pdfjsLoading = (async () => {
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    await new Promise((resolve, reject) => {
+      script.onload = resolve;
+      script.onerror = () => reject(new Error('PDF 渲染库加载失败，请检查网络'));
+      document.head.appendChild(script);
+    });
+    _pdfjsLib = window.pdfjsLib;
+    _pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    return _pdfjsLib;
+  })();
+  return _pdfjsLoading;
+}
+
+async function renderPdfToImage(file, maxDimension) {
+  const pdfjs = await _ensurePdfJs();
+  const buffer = await file.arrayBuffer();
+  const pdf = await pdfjs.getDocument({ data: buffer }).promise;
+  const page = await pdf.getPage(1);
+  const viewport = page.getViewport({ scale: 1 });
+  const longSide = Math.max(viewport.width, viewport.height);
+  const scale = longSide > maxDimension ? maxDimension / longSide : 2;
+  const scaled = page.getViewport({ scale });
+  const canvas = document.createElement('canvas');
+  canvas.width = scaled.width;
+  canvas.height = scaled.height;
+  const ctx = canvas.getContext('2d');
+  await page.render({ canvasContext: ctx, viewport: scaled }).promise;
+  const img = new Image();
+  return new Promise((resolve, reject) => {
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('PDF 渲染失败'));
+    img.src = canvas.toDataURL('image/png');
+  });
+}
+
+async function renderSvgToImage(file, maxDimension) {
+  const text = await file.text();
+  const blob = new Blob([text], { type: 'image/svg+xml' });
+  const url = URL.createObjectURL(blob);
+  const img = new Image();
+  return new Promise((resolve, reject) => {
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const longSide = Math.max(img.naturalWidth, img.naturalHeight);
+      if (longSide > maxDimension) {
+        const s = maxDimension / longSide;
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.naturalWidth * s);
+        c.height = Math.round(img.naturalHeight * s);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        const r = new Image();
+        r.onload = () => resolve(r);
+        r.onerror = () => reject(new Error('SVG 缩放失败'));
+        r.src = c.toDataURL('image/png');
+      } else {
+        resolve(img);
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('无法解析 SVG 文件'));
+    };
+    img.src = url;
+  });
+}
+
+function isVectorFile(file) {
+  const n = file.name.toLowerCase();
+  return n.endsWith('.pdf') || n.endsWith('.ai') ||
+    file.type === 'application/pdf' ||
+    n.endsWith('.svg') || file.type === 'image/svg+xml';
+}
+
+async function loadVectorFile(file, maxDimension) {
+  const n = file.name.toLowerCase();
+  if (n.endsWith('.svg') || file.type === 'image/svg+xml') {
+    return await renderSvgToImage(file, maxDimension);
+  }
+  return await renderPdfToImage(file, maxDimension);
+}
+
+// 将矢量文件转为 PNG File，供后续透明处理流程使用
+async function convertVectorToRasterFile(file, maxDimension) {
+  const img = await loadVectorFile(file, maxDimension);
+  const canvas = document.createElement('canvas');
+  canvas.width = img.naturalWidth;
+  canvas.height = img.naturalHeight;
+  canvas.getContext('2d').drawImage(img, 0, 0);
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+  return new File([blob], file.name.replace(/\.(pdf|ai|svg)$/i, '.png'), { type: 'image/png' });
 }
 
 function estimateUploadBackgroundPalette(data, width, height) {
@@ -2097,6 +2304,24 @@ async function convertUploadToTransparentPng(file, maxDimension = 1024, colorMod
         ));
       }
     }
+
+    // 内岛检测：清除被主体包围但与四边不连通的背景色区域（如字母O、P内部的白色镂空）
+    const innerTolerance = 50;
+    for (let pixel = 0; pixel < width * height; pixel++) {
+      const alphaIndex = pixel * 4 + 3;
+      if (data[alphaIndex] < 250) continue; // 已处理过的不再动
+      const index = pixel * 4;
+      let minDist = Infinity;
+      for (const color of palette) {
+        const dr = data[index] - color[0];
+        const dg = data[index + 1] - color[1];
+        const db = data[index + 2] - color[2];
+        minDist = Math.min(minDist, Math.sqrt(dr * dr + dg * dg + db * db));
+      }
+      if (minDist <= innerTolerance) {
+        data[alphaIndex] = 0;
+      }
+    }
   }
 
   let left = width;
@@ -2155,17 +2380,20 @@ function setUploadProcessingStatus(id, message, type = '') {
 let customIconCounter = 0;
 async function handleCustomIconUpload(files) {
   if (!files || files.length === 0) return;
-  const validFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
+  const validFiles = Array.from(files).filter(file => file.type.startsWith('image/') || isVectorFile(file));
   const uploadButton = document.getElementById('customIconUploadBtn');
   uploadButton.disabled = true;
   try {
     for (let index = 0; index < validFiles.length; index++) {
+      const file = validFiles[index];
+      const isVec = isVectorFile(file);
       setUploadProcessingStatus(
         'customIconProcessingStatus',
-        `正在转换第 ${index + 1}/${validFiles.length} 张图片…`,
+        isVec ? `正在解析第 ${index + 1}/${validFiles.length} 个矢量文件…` : `正在转换第 ${index + 1}/${validFiles.length} 张图片…`,
         'processing'
       );
-      const finalDataURL = await convertUploadToTransparentPng(validFiles[index], 512, 'black-texture');
+      const rasterFile = isVec ? await convertVectorToRasterFile(file, 512) : file;
+      const finalDataURL = await convertUploadToTransparentPng(rasterFile, 512, 'black-texture');
       const finalImg = new Image();
       await new Promise((resolve, reject) => {
         finalImg.onload = resolve;
@@ -2262,11 +2490,7 @@ function buildBgSwatchRow() {
   const input = document.createElement('input');
   input.type = 'color';
   input.value = state.bg;
-  input.style.width = '30px';
-  input.style.height = '30px';
-  input.style.border = '1.5px solid var(--line)';
-  input.style.borderRadius = '50%';
-  input.style.cursor = 'pointer';
+  input.className = 'color-input-swatch';
   input.oninput = (e) => {
     state.bg = e.target.value;
     buildBgSwatchRow();
@@ -2320,11 +2544,7 @@ function buildLidColorRow() {
   const input = document.createElement('input');
   input.type = 'color';
   input.value = state.lidColor;
-  input.style.width = '30px';
-  input.style.height = '30px';
-  input.style.border = '1.5px solid var(--line)';
-  input.style.borderRadius = '50%';
-  input.style.cursor = 'pointer';
+  input.className = 'color-input-swatch';
   input.oninput = (e) => {
     state.lidColor = e.target.value;
     buildLidColorRow();
@@ -2341,14 +2561,16 @@ function applyBoxStyle(el, box) {
   if (box.radius) el.style.borderRadius = box.radius;
 }
 
+let _cupPreviewUrl = null;
+
 function updateCupPreview() {
-  const wrap = document.getElementById('cupPreviewWrap');
-  const photo = document.getElementById('cupPhoto');
-  const bodyVisual = document.getElementById('cupBodyVisual');
-  const lidVisual = document.getElementById('cupLidVisual');
-  const patternLayer = document.getElementById('cupPatternLayer');
-  const lidLayer = document.getElementById('cupLidLayer');
-  const canvas = document.getElementById('patternCanvas');
+  const wrap = $('cupPreviewWrap');
+  const photo = $('cupPhoto');
+  const bodyVisual = $('cupBodyVisual');
+  const lidVisual = $('cupLidVisual');
+  const patternLayer = $('cupPatternLayer');
+  const lidLayer = $('cupLidLayer');
+  const canvas = $('patternCanvas');
   if (!wrap || !photo || !bodyVisual || !lidVisual || !patternLayer || !lidLayer || !canvas) return;
 
   const cup = CUP_MODELS[state.cupModel] || CUP_MODELS.red;
@@ -2361,7 +2583,15 @@ function updateCupPreview() {
   applyBoxStyle(lidVisual, cup.lid);
   applyBoxStyle(patternLayer, cup.body);
   applyBoxStyle(lidLayer, cup.lid);
-  patternLayer.style.backgroundImage = `url("${canvas.toDataURL('image/png')}")`;
+
+  // 异步生成背景图 URL，避免同步 toDataURL 阻塞主线程
+  canvas.toBlob(blob => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    patternLayer.style.backgroundImage = `url("${url}")`;
+    if (_cupPreviewUrl) URL.revokeObjectURL(_cupPreviewUrl);
+    _cupPreviewUrl = url;
+  }, 'image/png');
   lidLayer.style.background = state.lidColor;
 
   // 滤镜对杯身的色彩影响：用 CSS filter 让整个杯子（包括金属、盖子）也呈现整体氛围
@@ -2791,8 +3021,18 @@ function getActiveDims() {
   return CANVAS_SIZES[state.canvasSize];
 }
 
+let _renderScheduled = false;
+function scheduleRender() {
+  if (_renderScheduled) return;
+  _renderScheduled = true;
+  requestAnimationFrame(() => {
+    _renderScheduled = false;
+    render();
+  });
+}
+
 function render() {
-  const canvas = document.getElementById('patternCanvas');
+  const canvas = $('patternCanvas');
   const dims = getActiveDims();
   const DPI_SCALE = 4; // 渲染倍率，保证清晰度
   const mmToPx = 3.7795275591 * DPI_SCALE; // 96dpi基准 * scale
@@ -2807,7 +3047,7 @@ function render() {
   canvas.style.width = (dims.w * 3.7795275591 * baseScale) + 'px';
   canvas.style.height = (dims.h * 3.7795275591 * baseScale) + 'px';
 
-  document.getElementById('dimsText').textContent = `${(dims.w/10).toFixed(1)}cm × ${(dims.h/10).toFixed(1)}cm`;
+  $('dimsText').textContent = `${(dims.w/10).toFixed(1)}cm × ${(dims.h/10).toFixed(1)}cm`;
 
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, wPx, hPx);
@@ -2824,7 +3064,7 @@ function render() {
   // ── 统一数据源：预览/PNG导出/PDF导出都用同一套位置计算，保证完全一致 ──
   const placements = getPatternPlacements(dims);
 
-  const shortfallHint = document.getElementById('shortfallHint');
+  const shortfallHint = $('shortfallHint');
   if (shortfallHint) {
     shortfallHint.style.display = state._lastPlacementShortfall ? 'block' : 'none';
   }
@@ -2869,6 +3109,7 @@ function render() {
     renderSeamPreview();
   }
   updateCupPreview();
+  updateExportUi();
 }
 
 function drawHeroImageAt(ctx, x, y, angle, sizePx) {
@@ -3290,7 +3531,7 @@ function getFocusLayerPlacements(dims) {
     const sizeMM = Math.min(dims.w, dims.h) * (state.textSizePct / 100);
     focusLayers.push({
       x: dims.w / 2,
-      y: heroY + dims.h * (state.textOffsetYPct / 100),
+      y: dims.h / 2 + dims.h * (state.textOffsetYPct / 100),
       angle: (state.textRotation || 0) * Math.PI / 180,
       iconType: null,
       sizeMM,
@@ -3904,79 +4145,100 @@ function buildPdf(objects) {
   return pdf;
 }
 
-function exportVectorPdf() {
-  const hasFilter = state.filterStyle && state.filterStyle !== 'none';
+function exportPdfWithOptions() {
+  const dims = getActiveDims();
+  const dpi = state.exportDpi;
+  const mmToPx = dpi / 25.4;
 
-  // 如果勾选了"在 PDF 中应用滤镜"且确实选了滤镜：走位图嵌入路径
-  if (hasFilter && state.includeFilterInPdf) {
-    exportRasterPdfWithFilter();
-    return;
+  const exportCanvas = document.createElement('canvas');
+  exportCanvas.width = Math.round(dims.w * mmToPx);
+  exportCanvas.height = Math.round(dims.h * mmToPx);
+  const ctx = exportCanvas.getContext('2d');
+
+  // 背景
+  ctx.fillStyle = state.bg;
+  ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, exportCanvas.width, exportCanvas.height);
+  ctx.clip();
+
+  getPatternPlacements(dims).forEach(item => {
+    // 根据跳过选项过滤
+    if (item.layerType === 'text' && state.pdfSkipTextLayer) return;
+    if (item.isHero && state.heroCustomImage && state.pdfSkipHeroImage) return;
+    if (typeof item.iconType === 'string' && item.iconType.startsWith('custom_') && state.pdfSkipCustomIcons) return;
+    const iconDef = ICONS[item.iconType];
+    if (iconDef && (iconDef.isEmoji || iconDef.isText) && state.pdfSkipEmojiIcons) return;
+
+    if (item.layerType === 'text') {
+      drawTextImageAt(ctx, item.x * mmToPx, item.y * mmToPx, item.angle, item.sizeMM * mmToPx);
+    } else if (item.isHero && state.heroCustomImage) {
+      drawHeroImageAt(ctx, item.x * mmToPx, item.y * mmToPx, item.angle, item.sizeMM * mmToPx);
+    } else {
+      drawIconAt(ctx, item.x * mmToPx, item.y * mmToPx, item.angle, item.iconType, item.sizeMM * mmToPx, item.color, item.halfBox * mmToPx);
+    }
+  });
+
+  ctx.restore();
+
+  // 应用滤镜（如果未跳过）
+  if (!state.pdfSkipFilter) {
+    applyFilterToCanvas(exportCanvas, state.filterStyle, state.filterIntensity);
   }
 
-  // 矢量 PDF 永远不应用滤镜（默认行为）
-  const dims = getActiveDims();
+  // 转为 JPEG 嵌入 PDF
+  const jpegDataURL = exportCanvas.toDataURL('image/jpeg', 0.92);
+  const base64 = jpegDataURL.split(',')[1];
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
   const ptPerMm = 72 / 25.4;
   const pageW = dims.w * ptPerMm;
   const pageH = dims.h * ptPerMm;
-  const strokePt = state.stroke * 0.2117 * ptPerMm;
-  let stream = `q\n1 0 0 -1 0 ${pdfNum(pageH)} cm\n`;
-  stream += `${pdfRgb(state.bg)} rg\n0 0 ${pdfNum(pageW)} ${pdfNum(pageH)} re f\n`;
-  stream += `q\n0 0 ${pdfNum(pageW)} ${pdfNum(pageH)} re W n\n`;
 
-  let skippedCustomHero = false;
-  let skippedTextLayer = false;
-  let skippedTextIcons = 0;
-  let skippedCustomIcons = 0;
-
-  getPatternPlacements(dims).forEach(item => {
-    if (item.layerType === 'text') {
-      skippedTextLayer = true;
-      return;
-    }
-    if (item.isHero && state.heroCustomImage) {
-      skippedCustomHero = true;
-      return;
-    }
-    const isCustomIcon = typeof item.iconType === 'string' && item.iconType.startsWith('custom_');
-    if (isCustomIcon) skippedCustomIcons++;
-    const iconDef = ICONS[item.iconType];
-    const isTextLike = iconDef && (iconDef.isEmoji || iconDef.isText);
-    if (isTextLike) skippedTextIcons++;
-    const effectiveType = (isTextLike || isCustomIcon) ? 'dot' : item.iconType;
-
-    const x = item.x * ptPerMm;
-    const y = item.y * ptPerMm;
-    const s = item.sizeMM * ptPerMm;
-    const cos = Math.cos(item.angle);
-    const sin = Math.sin(item.angle);
-    const rgb = pdfRgb(item.color);
-    stream += `q\n${pdfNum(cos)} ${pdfNum(sin)} ${pdfNum(-sin)} ${pdfNum(cos)} ${pdfNum(x)} ${pdfNum(y)} cm\n`;
-    stream += `${rgb} rg\n${rgb} RG\n${pdfNum(strokePt)} w\n1 J 1 j\n`;
-    stream += pdfIconOps(effectiveType, s, state.filled);
-    stream += 'Q\n';
-  });
-
-  stream += 'Q\nQ\n';
-  const objects = [
+  const contentStream = `q\n${pdfNum(pageW)} 0 0 ${pdfNum(pageH)} 0 0 cm\n/Im0 Do\nQ\n`;
+  const pageObj = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pdfNum(pageW)} ${pdfNum(pageH)}] /Resources << /XObject << /Im0 5 0 R >> >> /Contents 4 0 R >>`;
+  const objStrings = [
     '<< /Type /Catalog /Pages 2 0 R >>',
     '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pdfNum(pageW)} ${pdfNum(pageH)}] /Contents 4 0 R >>`,
-    `<< /Length ${stream.length} >>\nstream\n${stream}endstream`
+    pageObj,
+    `<< /Length ${contentStream.length} >>\nstream\n${contentStream}endstream`,
   ];
 
-  const blob = new Blob([buildPdf(objects)], { type: 'application/pdf' });
-  downloadBlob(blob, `碎花图案_${dims.w}x${dims.h}mm_vector.pdf`);
+  const imgObj = `<< /Type /XObject /Subtype /Image /Width ${exportCanvas.width} /Height ${exportCanvas.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${bytes.length} >>\nstream\n`;
+  const imgObjEnd = '\nendstream';
 
-  if (skippedCustomHero || skippedTextLayer || skippedTextIcons > 0 || skippedCustomIcons > 0 || hasFilter) {
-    let msg = '矢量 PDF 导出完成，但有以下内容做了简化处理：\n';
-    if (skippedCustomHero) msg += '· 自定义上传的主元素图片无法转为矢量路径，已跳过\n';
-    if (skippedTextLayer) msg += '· 上传的文字图层无法转为矢量路径，已跳过\n';
-    if (skippedTextIcons > 0) msg += `· ${skippedTextIcons} 个 Emoji/数字/符号类图标无法转为矢量路径，已用圆点占位\n`;
-    if (skippedCustomIcons > 0) msg += `· ${skippedCustomIcons} 个自定义上传的图标无法转为矢量路径，已用圆点占位\n`;
-    if (hasFilter) msg += '· 已选择的滤镜效果未应用（矢量PDF不支持滤镜）。如需保留滤镜，请勾选"PDF中应用滤镜"选项重新导出（会变为位图嵌入式PDF）\n';
-    msg += '\n如需保留完整位图效果，请改用"PNG · 1440 DPI"导出。';
-    alert(msg);
+  const encoder = new TextEncoder();
+  const parts = [];
+  parts.push(encoder.encode('%PDF-1.4\n'));
+  const offsets = [0];
+
+  for (let i = 0; i < objStrings.length; i++) {
+    offsets.push(parts.reduce((s, p) => s + p.length, 0));
+    parts.push(encoder.encode(`${i + 1} 0 obj\n${objStrings[i]}\nendobj\n`));
   }
+
+  const imgObjPos = parts.reduce((s, p) => s + p.length, 0);
+  offsets.push(imgObjPos);
+  parts.push(encoder.encode(`5 0 obj\n${imgObj}`));
+  parts.push(bytes);
+  parts.push(encoder.encode(`${imgObjEnd}\nendobj\n`));
+
+  const xrefStart = parts.reduce((s, p) => s + p.length, 0);
+  let xref = 'xref\n0 6\n0000000000 65535 f \n';
+  for (let i = 1; i <= 5; i++) xref += String(offsets[i]).padStart(10, '0') + ' 00000 n \n';
+  parts.push(encoder.encode(xref));
+  parts.push(encoder.encode(`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`));
+
+  const totalLen = parts.reduce((s, p) => s + p.length, 0);
+  const finalBytes = new Uint8Array(totalLen);
+  let pos = 0;
+  for (const p of parts) { finalBytes.set(p, pos); pos += p.length; }
+
+  const blob = new Blob([finalBytes], { type: 'application/pdf' });
+  downloadBlob(blob, `碎花图案_${dims.w}x${dims.h}mm_${dpi}dpi.pdf`);
 }
 
 // 位图嵌入式 PDF 导出：把高分辨率的带滤镜画布嵌入到 PDF 页面中
@@ -4059,7 +4321,7 @@ async function exportRasterPdfWithFilter() {
 document.getElementById('density').oninput = (e) => {
   state.density = parseFloat(e.target.value);
   syncSliderLabels();
-  render();
+  scheduleRender();
 };
 document.getElementById('sizeMin').oninput = (e) => {
   state.sizeMin = parseFloat(e.target.value);
@@ -4068,7 +4330,7 @@ document.getElementById('sizeMin').oninput = (e) => {
     document.getElementById('sizeMax').value = state.sizeMax;
   }
   syncSliderLabels();
-  render();
+  scheduleRender();
 };
 document.getElementById('sizeMax').oninput = (e) => {
   state.sizeMax = parseFloat(e.target.value);
@@ -4077,22 +4339,22 @@ document.getElementById('sizeMax').oninput = (e) => {
     document.getElementById('sizeMin').value = state.sizeMin;
   }
   syncSliderLabels();
-  render();
+  scheduleRender();
 };
 document.getElementById('rotation').oninput = (e) => {
   state.rotation = parseFloat(e.target.value);
   syncSliderLabels();
-  render();
+  scheduleRender();
 };
 document.getElementById('strokeWidth').oninput = (e) => {
   state.stroke = parseFloat(e.target.value);
   syncSliderLabels();
-  render();
+  scheduleRender();
 };
 document.getElementById('edgeMargin').oninput = (e) => {
   state.edgeMargin = parseFloat(e.target.value);
   syncSliderLabels();
-  render();
+  scheduleRender();
 };
 document.getElementById('filledSwitch').onclick = (e) => {
   state.filled = !state.filled;
@@ -4104,14 +4366,14 @@ document.getElementById('filledSwitch').onclick = (e) => {
 document.getElementById('overlapAllowance').oninput = (e) => {
   state.overlapAllowance = parseFloat(e.target.value);
   syncSliderLabels();
-  render();
+  scheduleRender();
 };
 
 // ── 排列模式：整齐度 ──
 document.getElementById('layoutRegularity').oninput = (e) => {
   state.layoutRegularity = parseFloat(e.target.value);
   syncSliderLabels();
-  render();
+  scheduleRender();
 };
 
 // ── 主元素图层 ──
@@ -4124,17 +4386,17 @@ document.getElementById('heroSwitch').onclick = (e) => {
 document.getElementById('heroSizePct').oninput = (e) => {
   state.heroSizePct = parseFloat(e.target.value);
   syncSliderLabels();
-  render();
+  scheduleRender();
 };
 document.getElementById('heroOffsetYPct').oninput = (e) => {
   state.heroOffsetYPct = parseFloat(e.target.value);
   syncSliderLabels();
-  render();
+  scheduleRender();
 };
 document.getElementById('heroRotation').oninput = (e) => {
   state.heroRotation = parseFloat(e.target.value);
   syncSliderLabels();
-  render();
+  scheduleRender();
 };
 document.getElementById('heroAvoidSwitch').onclick = (e) => {
   state.heroAvoidEnabled = !state.heroAvoidEnabled;
@@ -4145,7 +4407,7 @@ document.getElementById('heroAvoidSwitch').onclick = (e) => {
 document.getElementById('heroAvoidDistanceMM').oninput = (e) => {
   state.heroAvoidDistanceMM = parseFloat(e.target.value);
   syncSliderLabels();
-  render();
+  scheduleRender();
 };
 
 document.getElementById('heroTabBuiltin').onclick = () => {
@@ -4186,10 +4448,13 @@ const heroUploadZone = document.getElementById('heroUploadZone');
 const heroFileInput = document.getElementById('heroFileInput');
 
 async function handleHeroFile(file) {
-  if (!file || !file.type.startsWith('image/')) return;
-  setUploadProcessingStatus('heroProcessingStatus', '正在生成透明 PNG…', 'processing');
+  if (!file) return;
+  if (!file.type.startsWith('image/') && !isVectorFile(file)) return;
+  setUploadProcessingStatus('heroProcessingStatus',
+    isVectorFile(file) ? '正在解析矢量文件…' : '正在生成透明 PNG…', 'processing');
   try {
-    state.heroCustomImage = await convertUploadToTransparentPng(file, 1536, 'original');
+    const rasterFile = isVectorFile(file) ? await convertVectorToRasterFile(file, 1536) : file;
+    state.heroCustomImage = await convertUploadToTransparentPng(rasterFile, 1536, 'original');
     const img = new Image();
     await new Promise((resolve, reject) => {
       img.onload = resolve;
@@ -4260,17 +4525,17 @@ document.querySelectorAll('input[name="textUploadMode"]').forEach(input => {
 document.getElementById('textSizePct').oninput = (e) => {
   state.textSizePct = parseFloat(e.target.value);
   syncSliderLabels();
-  render();
+  scheduleRender();
 };
 document.getElementById('textOffsetYPct').oninput = (e) => {
   state.textOffsetYPct = parseFloat(e.target.value);
   syncSliderLabels();
-  render();
+  scheduleRender();
 };
 document.getElementById('textRotation').oninput = (e) => {
   state.textRotation = parseFloat(e.target.value);
   syncSliderLabels();
-  render();
+  scheduleRender();
 };
 document.getElementById('textAvoidSwitch').onclick = (e) => {
   state.textAvoidEnabled = !state.textAvoidEnabled;
@@ -4281,17 +4546,20 @@ document.getElementById('textAvoidSwitch').onclick = (e) => {
 document.getElementById('textAvoidDistanceMM').oninput = (e) => {
   state.textAvoidDistanceMM = parseFloat(e.target.value);
   syncSliderLabels();
-  render();
+  scheduleRender();
 };
 
 const textUploadZone = document.getElementById('textUploadZone');
 const textFileInput = document.getElementById('textFileInput');
 
 async function handleTextFile(file) {
-  if (!file || !file.type.startsWith('image/')) return;
-  setUploadProcessingStatus('textProcessingStatus', '正在生成文字透明 PNG…', 'processing');
+  if (!file) return;
+  if (!file.type.startsWith('image/') && !isVectorFile(file)) return;
+  setUploadProcessingStatus('textProcessingStatus',
+    isVectorFile(file) ? '正在解析矢量文件…' : '正在生成文字透明 PNG…', 'processing');
   try {
-    state.textCustomImage = await convertUploadToTransparentPng(file, 1536, 'original');
+    const rasterFile = isVectorFile(file) ? await convertVectorToRasterFile(file, 1536) : file;
+    state.textCustomImage = await convertUploadToTransparentPng(rasterFile, 1536, 'original');
     const img = new Image();
     await new Promise((resolve, reject) => {
       img.onload = resolve;
@@ -4365,28 +4633,45 @@ document.getElementById('canvasSize').onchange = (e) => {
 };
 document.getElementById('customW').oninput = (e) => {
   state.customW = parseFloat(e.target.value) || 1;
-  render();
+  scheduleRender();
 };
 document.getElementById('customH').oninput = (e) => {
   state.customH = parseFloat(e.target.value) || 1;
-  render();
+  scheduleRender();
 };
-document.getElementById('exportMode').onchange = (e) => {
-  state.exportMode = e.target.value;
-  updatePdfFilterOptionVisibility();
-};
+// ── 导出格式切换 ──
+document.querySelectorAll('#exportFormatRow .hero-tab').forEach(tab => {
+  tab.onclick = () => {
+    document.querySelectorAll('#exportFormatRow .hero-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    state.exportFormat = tab.dataset.format;
+    updateExportUi();
+  };
+});
 
-// 滤镜强度
+// ── 导出 DPI 切换 ──
+document.querySelectorAll('#exportDpiRow .preset-btn').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('#exportDpiRow .preset-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.exportDpi = parseInt(btn.dataset.dpi, 10);
+  };
+});
+
+// ── PDF 跳过选项 ──
+document.getElementById('pdfSkipHeroImage').onchange = (e) => { state.pdfSkipHeroImage = e.target.checked; };
+document.getElementById('pdfSkipTextLayer').onchange = (e) => { state.pdfSkipTextLayer = e.target.checked; };
+document.getElementById('pdfSkipEmojiIcons').onchange = (e) => { state.pdfSkipEmojiIcons = e.target.checked; };
+document.getElementById('pdfSkipCustomIcons').onchange = (e) => { state.pdfSkipCustomIcons = e.target.checked; };
+document.getElementById('pdfSkipFilter').onchange = (e) => { state.pdfSkipFilter = e.target.checked; };
+
+// ── 滤镜强度 ──
 document.getElementById('filterIntensity').oninput = (e) => {
   state.filterIntensity = parseFloat(e.target.value);
   syncSliderLabels();
-  render();
+  scheduleRender();
 };
 
-// PDF 中是否保留滤镜的勾选框
-document.getElementById('includeFilterInPdf').onchange = (e) => {
-  state.includeFilterInPdf = e.target.checked;
-};
 document.getElementById('randomizeBtn').onclick = () => {
   state.seed = Math.floor(Math.random() * 100000);
   render();
@@ -4409,7 +4694,7 @@ document.getElementById('zoomReset').onclick = () => {
   zoomLevel = 1.2;
   updateZoomDisplay();
   // 重置缩放时同时把 stage 滚动条复位到左上角，让用户立即看到画布全貌
-  const stage = document.querySelector('.stage');
+  const stage = $qs('.stage');
   if (stage) {
     stage.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
   }
@@ -4451,19 +4736,18 @@ document.querySelectorAll('.shape-opt').forEach(opt => {
 });
 
 document.getElementById('exportBtn').onclick = () => {
-  if (state.exportMode === 'pdf-vector') {
-    exportVectorPdf();
+  if (state.exportFormat === 'pdf') {
+    exportPdfWithOptions();
     return;
   }
-
-  const dpi = parseInt(state.exportMode.replace('png-', ''), 10) || 300;
-  exportPngAtDpi(dpi);
+  exportPngAtDpi(state.exportDpi);
 };
 
 // ═══════════════════════════════════════════════════════
 // 初始化
 // ═══════════════════════════════════════════════════════
 
+setupEventDelegation();
 buildPresetRow();
 buildIconGrid();
 buildSwatchRow();
@@ -4479,6 +4763,7 @@ buildCupOptionRow();
 buildLidColorRow();
 buildFilterGrid();
 syncSliderLabels();
+updateExportUi();
 updateZoomDisplay();
 render();
 
