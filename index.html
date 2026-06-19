@@ -283,6 +283,53 @@ input[type="range"]::-moz-range-thumb {
 .upload-processing-status.processing { color: var(--accent); }
 .upload-processing-status.error { color: #B94A48; }
 
+.local-asset-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.local-asset-summary {
+  min-width: 0;
+  color: var(--ink-soft);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(43, 39, 34, 0.48);
+}
+.dialog-backdrop.open { display: flex; }
+.dialog-panel {
+  width: min(460px, 100%);
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 18px 55px rgba(43, 39, 34, 0.22);
+  padding: 22px;
+}
+.dialog-panel h2 { font-size: 17px; font-weight: 650; }
+.dialog-panel p {
+  margin-top: 9px;
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.dialog-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-top: 18px;
+}
+
 .swatch-row {
   display: flex;
   gap: 8px;
@@ -1143,6 +1190,11 @@ select {
       </p>
 
       <div id="pdfSkipOptions" style="display:none; margin-top:14px; padding:10px 12px; background:var(--paper); border:1px solid var(--line); border-radius:8px;">
+        <div style="font-size:11px; font-weight:600; color:var(--ink); margin-bottom:8px;">PDF 输出模式</div>
+        <div class="hero-tab-row" id="pdfRenderModeRow" style="margin-bottom:12px;">
+          <div class="hero-tab active" data-pdf-mode="hybrid">智能混合</div>
+          <div class="hero-tab" data-pdf-mode="raster">完整位图</div>
+        </div>
         <div style="font-size:11px; font-weight:600; color:var(--ink); margin-bottom:10px;">PDF 导出时跳过以下元素（默认全部保留）：</div>
         <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12px; margin-bottom:6px;">
           <input type="checkbox" id="pdfSkipHeroImage" style="flex-shrink:0;"> 主元素上传图片
@@ -1160,6 +1212,15 @@ select {
           <input type="checkbox" id="pdfSkipFilter" style="flex-shrink:0;"> 风格滤镜效果
         </label>
       </div>
+    </div>
+
+    <div class="group" id="localAssetManager">
+      <div class="group-label">本地素材</div>
+      <div class="local-asset-row">
+        <div class="local-asset-summary" id="localAssetSummary">正在读取本地素材…</div>
+        <button type="button" class="btn btn-secondary" id="clearLocalAssetsBtn" style="flex-shrink:0; padding:7px 10px; font-size:11.5px;">清空全部</button>
+      </div>
+      <div id="localAssetStatus" class="upload-processing-status" aria-live="polite"></div>
     </div>
 
     <div class="group" style="border-bottom:none;">
@@ -1220,6 +1281,18 @@ select {
 
 </div>
 
+<div class="dialog-backdrop" id="filterExportDialog" role="dialog" aria-modal="true" aria-labelledby="filterExportTitle">
+  <div class="dialog-panel">
+    <h2 id="filterExportTitle">滤镜与矢量输出冲突</h2>
+    <p>当前风格滤镜需要把整张图案转成位图。请选择跳过滤镜并保留矢量，或改用完整位图保留当前视觉效果。</p>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-primary" data-filter-choice="skip">跳过滤镜，继续智能混合</button>
+      <button type="button" class="btn btn-secondary" data-filter-choice="raster">改用完整位图导出</button>
+      <button type="button" class="btn btn-secondary" data-filter-choice="cancel">取消</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ── DOM 缓存：高频查询的元素在首次访问后缓存 ──
 const $domCache = {};
@@ -1238,6 +1311,223 @@ function $qsa(sel) {
 // ═══════════════════════════════════════════════════════
 // 数据定义
 // ═══════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════
+// Pantone 近似色号查找
+// 说明: 完整 Pantone 色库属于商业授权资源，这里使用一个
+// 涵盖约300个常用 Pantone Solid Coated 编号的开源近似对照表，
+// 基于 LAB 颜色空间的 ΔE76 算法查找最接近的 Pantone 编号。
+// 工厂师傅拿到色号后，应以手头实体色卡为最终依据。
+// ═══════════════════════════════════════════════════════
+
+const PANTONE_LIBRARY = [
+  // 红色系
+  { code: '185 C', rgb: [228, 0, 43] },     { code: '186 C', rgb: [200, 16, 46] },
+  { code: '187 C', rgb: [166, 25, 46] },    { code: '188 C', rgb: [118, 35, 47] },
+  { code: '199 C', rgb: [212, 25, 53] },    { code: '200 C', rgb: [186, 12, 47] },
+  { code: '201 C', rgb: [157, 34, 53] },    { code: '202 C', rgb: [134, 38, 51] },
+  { code: '485 C', rgb: [218, 41, 28] },    { code: '486 C', rgb: [233, 131, 110] },
+  { code: '178 C', rgb: [255, 105, 97] },   { code: '179 C', rgb: [226, 61, 40] },
+  { code: '1797 C', rgb: [203, 51, 59] },   { code: '1788 C', rgb: [238, 39, 55] },
+  { code: 'Red 032 C', rgb: [239, 51, 64] },{ code: 'Warm Red C', rgb: [249, 66, 58] },
+
+  // 粉色 / 玫红
+  { code: '189 C', rgb: [240, 167, 175] },  { code: '190 C', rgb: [241, 142, 153] },
+  { code: '191 C', rgb: [240, 91, 113] },   { code: '192 C', rgb: [229, 25, 55] },
+  { code: '212 C', rgb: [231, 102, 144] },  { code: '213 C', rgb: [225, 65, 122] },
+  { code: '214 C', rgb: [207, 33, 98] },    { code: '215 C', rgb: [175, 30, 86] },
+  { code: '218 C', rgb: [222, 95, 162] },   { code: '219 C', rgb: [211, 38, 138] },
+  { code: '230 C', rgb: [243, 158, 196] },  { code: '231 C', rgb: [242, 126, 187] },
+  { code: '232 C', rgb: [233, 92, 175] },   { code: '233 C', rgb: [197, 27, 142] },
+  { code: '234 C', rgb: [173, 22, 122] },   { code: '241 C', rgb: [193, 39, 132] },
+  { code: 'Pink C', rgb: [212, 20, 90] },   { code: 'Rhodamine Red C', rgb: [225, 0, 152] },
+  { code: '705 C', rgb: [245, 219, 224] },  { code: '706 C', rgb: [244, 199, 202] },
+  { code: '707 C', rgb: [245, 167, 174] },  { code: '708 C', rgb: [243, 137, 154] },
+  { code: '709 C', rgb: [232, 96, 124] },   { code: '710 C', rgb: [218, 65, 103] },
+
+  // 橙色系
+  { code: '021 C', rgb: [254, 80, 0] },     { code: '151 C', rgb: [255, 130, 0] },
+  { code: '152 C', rgb: [221, 122, 0] },    { code: '158 C', rgb: [232, 119, 34] },
+  { code: '159 C', rgb: [203, 96, 21] },    { code: '160 C', rgb: [162, 79, 35] },
+  { code: '165 C', rgb: [255, 130, 48] },   { code: '166 C', rgb: [227, 82, 5] },
+  { code: '167 C', rgb: [190, 83, 28] },    { code: '172 C', rgb: [250, 77, 86] },
+  { code: '173 C', rgb: [207, 69, 32] },    { code: '174 C', rgb: [156, 56, 36] },
+  { code: 'Orange 021 C', rgb: [254, 80, 0] },{ code: 'Bright Orange C', rgb: [255, 88, 0] },
+
+  // 黄色系
+  { code: '100 C', rgb: [244, 237, 124] },  { code: '101 C', rgb: [244, 233, 96] },
+  { code: '102 C', rgb: [249, 232, 20] },   { code: '103 C', rgb: [201, 178, 5] },
+  { code: '105 C', rgb: [136, 117, 31] },   { code: '108 C', rgb: [255, 230, 41] },
+  { code: '109 C', rgb: [255, 209, 0] },    { code: '110 C', rgb: [218, 170, 0] },
+  { code: '113 C', rgb: [253, 218, 36] },   { code: '114 C', rgb: [253, 215, 51] },
+  { code: '115 C', rgb: [253, 218, 36] },   { code: '116 C', rgb: [255, 205, 0] },
+  { code: '117 C', rgb: [196, 154, 14] },   { code: '120 C', rgb: [248, 224, 142] },
+  { code: '121 C', rgb: [250, 215, 110] },  { code: '122 C', rgb: [254, 209, 65] },
+  { code: '123 C', rgb: [255, 199, 44] },   { code: '124 C', rgb: [234, 170, 0] },
+  { code: '125 C', rgb: [183, 134, 11] },   { code: '127 C', rgb: [243, 220, 121] },
+  { code: '128 C', rgb: [239, 200, 87] },   { code: '129 C', rgb: [241, 180, 52] },
+  { code: '130 C', rgb: [240, 171, 0] },    { code: '131 C', rgb: [205, 144, 38] },
+  { code: '136 C', rgb: [255, 192, 96] },   { code: '137 C', rgb: [255, 163, 0] },
+  { code: 'Yellow C', rgb: [254, 221, 0] }, { code: 'Process Yellow C', rgb: [255, 231, 0] },
+
+  // 绿色系
+  { code: '347 C', rgb: [0, 154, 68] },     { code: '348 C', rgb: [0, 132, 61] },
+  { code: '349 C', rgb: [0, 107, 60] },     { code: '350 C', rgb: [37, 73, 47] },
+  { code: '354 C', rgb: [0, 177, 64] },     { code: '355 C', rgb: [0, 158, 73] },
+  { code: '356 C', rgb: [0, 117, 53] },     { code: '357 C', rgb: [33, 87, 50] },
+  { code: '361 C', rgb: [67, 176, 42] },    { code: '362 C', rgb: [80, 158, 47] },
+  { code: '363 C', rgb: [83, 139, 53] },    { code: '364 C', rgb: [76, 107, 41] },
+  { code: '368 C', rgb: [120, 190, 32] },   { code: '369 C', rgb: [88, 166, 25] },
+  { code: '370 C', rgb: [99, 133, 30] },    { code: '371 C', rgb: [85, 105, 35] },
+  { code: '375 C', rgb: [151, 215, 0] },    { code: '376 C', rgb: [126, 186, 21] },
+  { code: '377 C', rgb: [126, 159, 46] },   { code: '378 C', rgb: [89, 113, 47] },
+  { code: '382 C', rgb: [196, 214, 0] },    { code: '383 C', rgb: [168, 173, 0] },
+  { code: '384 C', rgb: [157, 144, 13] },   { code: '385 C', rgb: [124, 109, 49] },
+  { code: '565 C', rgb: [180, 213, 187] },  { code: '566 C', rgb: [158, 196, 162] },
+  { code: '567 C', rgb: [99, 154, 110] },   { code: '569 C', rgb: [0, 121, 89] },
+  { code: '574 C', rgb: [110, 124, 59] },   { code: '575 C', rgb: [82, 113, 47] },
+  { code: '576 C', rgb: [110, 132, 52] },   { code: '577 C', rgb: [183, 199, 137] },
+  { code: '578 C', rgb: [173, 197, 138] },  { code: '579 C', rgb: [162, 188, 122] },
+  { code: '580 C', rgb: [150, 178, 110] },  { code: '581 C', rgb: [121, 110, 39] },
+  { code: 'Green C', rgb: [0, 173, 131] },  { code: '7480 C', rgb: [0, 211, 118] },
+
+  // 蓝绿 / 青色
+  { code: '320 C', rgb: [0, 156, 166] },    { code: '321 C', rgb: [0, 140, 152] },
+  { code: '322 C', rgb: [0, 122, 135] },    { code: '323 C', rgb: [0, 106, 113] },
+  { code: '324 C', rgb: [155, 211, 212] },  { code: '325 C', rgb: [101, 201, 200] },
+  { code: '326 C', rgb: [0, 176, 173] },    { code: '327 C', rgb: [0, 138, 132] },
+  { code: '328 C', rgb: [0, 115, 108] },    { code: '329 C', rgb: [0, 99, 101] },
+  { code: '333 C', rgb: [62, 207, 207] },   { code: '334 C', rgb: [0, 158, 152] },
+  { code: '335 C', rgb: [0, 130, 119] },    { code: '336 C', rgb: [0, 109, 90] },
+  { code: '339 C', rgb: [0, 177, 121] },    { code: '340 C', rgb: [0, 155, 119] },
+  { code: '341 C', rgb: [0, 121, 79] },     { code: '342 C', rgb: [0, 100, 65] },
+  { code: '5483 C', rgb: [101, 138, 142] }, { code: '5493 C', rgb: [127, 162, 165] },
+  { code: '7689 C', rgb: [42, 138, 191] },
+
+  // 蓝色系
+  { code: '279 C', rgb: [65, 143, 222] },   { code: '280 C', rgb: [1, 33, 105] },
+  { code: '281 C', rgb: [0, 40, 85] },      { code: '282 C', rgb: [0, 35, 75] },
+  { code: '285 C', rgb: [0, 114, 206] },    { code: '286 C', rgb: [0, 56, 168] },
+  { code: '287 C', rgb: [0, 56, 147] },     { code: '288 C', rgb: [0, 45, 114] },
+  { code: '289 C', rgb: [12, 35, 64] },     { code: '292 C', rgb: [105, 179, 231] },
+  { code: '293 C', rgb: [0, 87, 184] },     { code: '294 C', rgb: [0, 51, 137] },
+  { code: '295 C', rgb: [0, 47, 108] },     { code: '299 C', rgb: [0, 163, 224] },
+  { code: '300 C', rgb: [0, 94, 184] },     { code: '301 C', rgb: [0, 75, 135] },
+  { code: '302 C', rgb: [0, 75, 109] },     { code: '305 C', rgb: [89, 203, 232] },
+  { code: '306 C', rgb: [0, 181, 226] },    { code: '307 C', rgb: [0, 99, 166] },
+  { code: '308 C', rgb: [0, 84, 132] },     { code: '312 C', rgb: [0, 169, 224] },
+  { code: '313 C', rgb: [0, 152, 212] },    { code: '314 C', rgb: [0, 132, 188] },
+  { code: '315 C', rgb: [0, 109, 159] },    { code: '316 C', rgb: [0, 79, 113] },
+  { code: '7461 C', rgb: [0, 124, 186] },   { code: '7463 C', rgb: [0, 42, 92] },
+  { code: '7686 C', rgb: [28, 87, 156] },   { code: 'Blue 072 C', rgb: [16, 6, 159] },
+  { code: 'Process Blue C', rgb: [0, 133, 202] },{ code: 'Reflex Blue C', rgb: [0, 32, 121] },
+  { code: 'Dark Blue C', rgb: [0, 35, 102] },{ code: '2925 C', rgb: [0, 154, 222] },
+
+  // 紫色 / 紫罗兰
+  { code: '249 C', rgb: [114, 36, 108] },   { code: '250 C', rgb: [225, 201, 226] },
+  { code: '251 C', rgb: [220, 156, 211] },  { code: '252 C', rgb: [157, 78, 158] },
+  { code: '253 C', rgb: [147, 39, 143] },   { code: '254 C', rgb: [129, 38, 122] },
+  { code: '255 C', rgb: [109, 32, 119] },   { code: '258 C', rgb: [129, 65, 153] },
+  { code: '259 C', rgb: [111, 38, 137] },   { code: '260 C', rgb: [97, 36, 117] },
+  { code: '261 C', rgb: [85, 33, 97] },     { code: '262 C', rgb: [80, 39, 90] },
+  { code: '265 C', rgb: [129, 86, 188] },   { code: '266 C', rgb: [102, 45, 145] },
+  { code: '267 C', rgb: [89, 39, 142] },    { code: '268 C', rgb: [80, 43, 121] },
+  { code: '269 C', rgb: [74, 35, 89] },     { code: '270 C', rgb: [165, 165, 213] },
+  { code: '272 C', rgb: [129, 116, 191] },  { code: '273 C', rgb: [36, 25, 134] },
+  { code: '274 C', rgb: [28, 22, 110] },    { code: '275 C', rgb: [29, 20, 87] },
+  { code: 'Violet C', rgb: [69, 0, 153] },  { code: 'Purple C', rgb: [171, 32, 165] },
+
+  // 棕色 / 大地色系
+  { code: '160 C', rgb: [162, 79, 35] },    { code: '161 C', rgb: [99, 58, 23] },
+  { code: '167 C', rgb: [190, 83, 28] },    { code: '168 C', rgb: [123, 56, 28] },
+  { code: '462 C', rgb: [108, 79, 56] },    { code: '463 C', rgb: [124, 89, 56] },
+  { code: '464 C', rgb: [140, 100, 50] },   { code: '465 C', rgb: [183, 142, 91] },
+  { code: '466 C', rgb: [195, 161, 112] },  { code: '467 C', rgb: [212, 184, 138] },
+  { code: '468 C', rgb: [221, 203, 164] },  { code: '469 C', rgb: [97, 49, 22] },
+  { code: '470 C', rgb: [177, 86, 39] },    { code: '471 C', rgb: [183, 84, 29] },
+  { code: '4625 C', rgb: [88, 49, 30] },    { code: '4695 C', rgb: [101, 65, 49] },
+  { code: '4705 C', rgb: [124, 78, 64] },   { code: '4715 C', rgb: [149, 102, 89] },
+  { code: '728 C', rgb: [205, 175, 125] },  { code: '729 C', rgb: [188, 152, 106] },
+  { code: '730 C', rgb: [170, 124, 80] },   { code: '731 C', rgb: [107, 65, 41] },
+  { code: '7505 C', rgb: [134, 100, 65] },  { code: '7506 C', rgb: [231, 206, 161] },
+  { code: '7507 C', rgb: [248, 219, 168] }, { code: '7508 C', rgb: [228, 192, 134] },
+  { code: '7509 C', rgb: [216, 174, 121] }, { code: '7510 C', rgb: [199, 142, 76] },
+
+  // 中性灰 / 黑
+  { code: 'Cool Gray 1 C', rgb: [218, 218, 217] },{ code: 'Cool Gray 2 C', rgb: [208, 208, 206] },
+  { code: 'Cool Gray 3 C', rgb: [200, 200, 199] },{ code: 'Cool Gray 4 C', rgb: [187, 188, 188] },
+  { code: 'Cool Gray 5 C', rgb: [177, 179, 179] },{ code: 'Cool Gray 6 C', rgb: [167, 168, 170] },
+  { code: 'Cool Gray 7 C', rgb: [151, 153, 155] },{ code: 'Cool Gray 8 C', rgb: [136, 139, 141] },
+  { code: 'Cool Gray 9 C', rgb: [117, 120, 123] },{ code: 'Cool Gray 10 C', rgb: [99, 102, 106] },
+  { code: 'Cool Gray 11 C', rgb: [83, 86, 90] },{ code: 'Warm Gray 1 C', rgb: [215, 210, 203] },
+  { code: 'Warm Gray 4 C', rgb: [183, 178, 168] },{ code: 'Warm Gray 7 C', rgb: [150, 144, 136] },
+  { code: 'Warm Gray 10 C', rgb: [121, 115, 109] },{ code: 'Black C', rgb: [45, 41, 38] },
+  { code: 'Black 3 C', rgb: [33, 47, 47] }, { code: 'Black 6 C', rgb: [16, 24, 32] },
+  { code: 'Process Black C', rgb: [39, 37, 31] },{ code: 'Neutral Black C', rgb: [34, 34, 34] },
+  { code: 'White', rgb: [255, 255, 255] },
+
+  // 米白 / 奶油 / 桃色
+  { code: '7527 C', rgb: [216, 209, 196] }, { code: '7528 C', rgb: [196, 188, 174] },
+  { code: '7529 C', rgb: [180, 168, 152] }, { code: '7530 C', rgb: [162, 149, 134] },
+  { code: '719 C', rgb: [233, 184, 137] },  { code: '720 C', rgb: [230, 173, 118] },
+  { code: '721 C', rgb: [216, 145, 88] },   { code: '722 C', rgb: [192, 113, 64] },
+];
+
+// RGB → LAB 转换（基于 D65 白点）
+function rgbToLab(r, g, b) {
+  let rn = r / 255, gn = g / 255, bn = b / 255;
+  rn = rn > 0.04045 ? Math.pow((rn + 0.055) / 1.055, 2.4) : rn / 12.92;
+  gn = gn > 0.04045 ? Math.pow((gn + 0.055) / 1.055, 2.4) : gn / 12.92;
+  bn = bn > 0.04045 ? Math.pow((bn + 0.055) / 1.055, 2.4) : bn / 12.92;
+  rn *= 100; gn *= 100; bn *= 100;
+  let x = rn * 0.4124 + gn * 0.3576 + bn * 0.1805;
+  let y = rn * 0.2126 + gn * 0.7152 + bn * 0.0722;
+  let z = rn * 0.0193 + gn * 0.1192 + bn * 0.9505;
+  x /= 95.047; y /= 100.000; z /= 108.883;
+  const f = t => t > 0.008856 ? Math.cbrt(t) : (7.787 * t) + (16 / 116);
+  const fx = f(x), fy = f(y), fz = f(z);
+  return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
+}
+
+// 预计算 Pantone 库的 LAB 值（首次调用时缓存）
+let _pantoneLabCache = null;
+function getPantoneLabCache() {
+  if (_pantoneLabCache) return _pantoneLabCache;
+  _pantoneLabCache = PANTONE_LIBRARY.map(p => ({
+    code: p.code,
+    rgb: p.rgb,
+    lab: rgbToLab(p.rgb[0], p.rgb[1], p.rgb[2]),
+    hex: '#' + p.rgb.map(c => c.toString(16).padStart(2, '0').toUpperCase()).join('')
+  }));
+  return _pantoneLabCache;
+}
+
+// 把 hex 颜色映射到最接近的 Pantone 编号（ΔE76）
+function findNearestPantone(hexColor) {
+  const r = parseInt(hexColor.slice(1, 3), 16);
+  const g = parseInt(hexColor.slice(3, 5), 16);
+  const b = parseInt(hexColor.slice(5, 7), 16);
+  const targetLab = rgbToLab(r, g, b);
+  const lib = getPantoneLabCache();
+  let best = lib[0];
+  let bestDist = Infinity;
+  for (const p of lib) {
+    const dl = targetLab[0] - p.lab[0];
+    const da = targetLab[1] - p.lab[1];
+    const db = targetLab[2] - p.lab[2];
+    const dist = dl*dl + da*da + db*db;
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = p;
+    }
+  }
+  return {
+    code: best.code,
+    pantoneHex: best.hex,
+    pantoneRgb: best.rgb,
+    deltaE: Math.sqrt(bestDist), // ΔE 值越小匹配越精确
+  };
+}
 
 const ICONS = {
   heart:     { label: '爱心', emoji: '♥', category: 'shape' },
@@ -1563,6 +1853,7 @@ let state = {
   lidColor: CUP_MODELS.red.defaultLid,
   exportFormat: 'png',       // 'png' | 'pdf'
   exportDpi: 300,            // 300 | 720 | 1440
+  pdfRenderMode: 'hybrid',   // 'hybrid' = 智能混合矢量 | 'raster' = 完整位图
   // PDF 导出时跳过的元素（默认全部不打勾 = 全部保留）
   pdfSkipHeroImage: false,
   pdfSkipTextLayer: false,
@@ -1588,6 +1879,8 @@ let state = {
   heroSourceMode: 'builtin', // 'builtin' | 'upload'
   heroUploadMode: 'tint',    // 'tint' 跟随配色 | 'original' 保留原色
   heroCustomImage: null,     // 自定义上传图片的 dataURL
+  heroSvgSource: null,
+  heroAssetName: '',
   heroAvoidEnabled: true,
   heroAvoidDistanceMM: 8,
 
@@ -1599,6 +1892,8 @@ let state = {
   textOffsetYPct: -22,
   textUploadMode: 'tint',
   textCustomImage: null,
+  textSvgSource: null,
+  textAssetName: '',
   textAvoidEnabled: true,
   textAvoidDistanceMM: 8,
   activeIconCategory: 'shape',
@@ -1620,6 +1915,304 @@ const customImgEls = new Map();
 const customTintCache = new Map();
 const heroTintCache = new Map();
 const textTintCache = new Map();
+
+// ═══════════════════════════════════════════════════════
+// 本地素材记忆（IndexedDB）
+// ═══════════════════════════════════════════════════════
+const ASSET_DB_NAME = 'floral-pattern-studio';
+const ASSET_DB_VERSION = 1;
+const ASSET_STORE = 'assets';
+const SESSION_STORE = 'session';
+let assetDb = null;
+let sessionSaveTimer = 0;
+let persistenceAvailable = true;
+
+function idbRequest(request) {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error('本地数据库操作失败'));
+  });
+}
+
+function openAssetDb() {
+  if (assetDb) return Promise.resolve(assetDb);
+  if (!window.indexedDB) return Promise.reject(new Error('当前浏览器不支持 IndexedDB'));
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(ASSET_DB_NAME, ASSET_DB_VERSION);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(ASSET_STORE)) {
+        const store = db.createObjectStore(ASSET_STORE, { keyPath: 'id' });
+        store.createIndex('role', 'role', { unique: false });
+      }
+      if (!db.objectStoreNames.contains(SESSION_STORE)) {
+        db.createObjectStore(SESSION_STORE, { keyPath: 'key' });
+      }
+    };
+    request.onsuccess = () => {
+      assetDb = request.result;
+      assetDb.onversionchange = () => assetDb.close();
+      resolve(assetDb);
+    };
+    request.onerror = () => reject(request.error || new Error('无法打开本地素材库'));
+  });
+}
+
+async function idbPut(storeName, value) {
+  const db = await openAssetDb();
+  const tx = db.transaction(storeName, 'readwrite');
+  tx.objectStore(storeName).put(value);
+  await new Promise((resolve, reject) => {
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error || new Error('本地素材保存失败'));
+    tx.onabort = () => reject(tx.error || new Error('本地素材保存已取消'));
+  });
+}
+
+async function idbDelete(storeName, key) {
+  const db = await openAssetDb();
+  const tx = db.transaction(storeName, 'readwrite');
+  tx.objectStore(storeName).delete(key);
+  await new Promise((resolve, reject) => {
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error || new Error('本地素材删除失败'));
+  });
+}
+
+async function idbGet(storeName, key) {
+  const db = await openAssetDb();
+  return idbRequest(db.transaction(storeName, 'readonly').objectStore(storeName).get(key));
+}
+
+async function idbGetAll(storeName) {
+  const db = await openAssetDb();
+  return idbRequest(db.transaction(storeName, 'readonly').objectStore(storeName).getAll());
+}
+
+function dataUrlToBlob(dataURL) {
+  const [header, payload] = dataURL.split(',');
+  const mime = (header.match(/data:([^;]+)/) || [])[1] || 'application/octet-stream';
+  const binary = atob(payload || '');
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error || new Error('无法恢复本地素材'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function loadImageElement(dataURL) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('本地素材图片无法解析'));
+    img.src = dataURL;
+  });
+}
+
+function sanitizeSvgText(svgText) {
+  if (!svgText) return null;
+  const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+  if (doc.querySelector('parsererror') || !doc.documentElement || doc.documentElement.localName !== 'svg') return null;
+  doc.querySelectorAll('script, foreignObject').forEach(node => node.remove());
+  doc.querySelectorAll('*').forEach(node => {
+    [...node.attributes].forEach(attr => {
+      const name = attr.name.toLowerCase();
+      const value = attr.value.trim();
+      if (name.startsWith('on')) node.removeAttribute(attr.name);
+      if ((name === 'href' || name === 'xlink:href') && !value.startsWith('#') && !value.startsWith('data:')) {
+        node.removeAttribute(attr.name);
+      }
+    });
+  });
+  return new XMLSerializer().serializeToString(doc.documentElement);
+}
+
+async function readSanitizedSvg(file) {
+  if (!file || !(file.name.toLowerCase().endsWith('.svg') || file.type === 'image/svg+xml')) return null;
+  return sanitizeSvgText(await file.text());
+}
+
+function uploadSessionSnapshot() {
+  return {
+    key: 'last',
+    activeCustomIds: [...state.activeIcons].filter(id => typeof id === 'string' && id.startsWith('custom_')),
+    heroEnabled: state.heroEnabled,
+    heroSourceMode: state.heroSourceMode,
+    heroUploadMode: state.heroUploadMode,
+    heroColor: state.heroColor,
+    heroSizePct: state.heroSizePct,
+    heroRotation: state.heroRotation,
+    heroOffsetYPct: state.heroOffsetYPct,
+    textLayerEnabled: state.textLayerEnabled,
+    textUploadMode: state.textUploadMode,
+    textColor: state.textColor,
+    textSizePct: state.textSizePct,
+    textRotation: state.textRotation,
+    textOffsetYPct: state.textOffsetYPct,
+    updatedAt: Date.now(),
+  };
+}
+
+function scheduleUploadSessionSave() {
+  if (!persistenceAvailable) return;
+  clearTimeout(sessionSaveTimer);
+  sessionSaveTimer = setTimeout(() => {
+    idbPut(SESSION_STORE, uploadSessionSnapshot()).catch(handlePersistenceError);
+  }, 250);
+}
+
+function handlePersistenceError(error) {
+  console.error(error);
+  persistenceAvailable = false;
+  const status = document.getElementById('localAssetStatus');
+  if (status) {
+    status.textContent = '本地素材暂时无法保存；当前页面仍可继续使用。';
+    status.className = 'upload-processing-status error';
+  }
+}
+
+async function saveAssetRecord(record) {
+  if (!persistenceAvailable) return;
+  try {
+    await idbPut(ASSET_STORE, record);
+    await updateLocalAssetSummary();
+    scheduleUploadSessionSave();
+  } catch (error) {
+    handlePersistenceError(error);
+  }
+}
+
+async function saveCustomAsset(custom, name = '') {
+  await saveAssetRecord({
+    id: custom.id,
+    role: 'custom',
+    name: name || custom.name || '自定义图标',
+    rasterBlob: dataUrlToBlob(custom.dataURL),
+    svgSource: custom.svgSource || null,
+    colorMode: custom.colorMode,
+    width: custom.width || 0,
+    height: custom.height || 0,
+    createdAt: custom.createdAt || Date.now(),
+    updatedAt: Date.now(),
+  });
+}
+
+async function saveFocusAsset(role) {
+  const isHero = role === 'hero';
+  const dataURL = isHero ? state.heroCustomImage : state.textCustomImage;
+  if (!dataURL) return;
+  await saveAssetRecord({
+    id: `${role}-current`,
+    role,
+    name: isHero ? (state.heroAssetName || '主元素') : (state.textAssetName || '文字图层'),
+    rasterBlob: dataUrlToBlob(dataURL),
+    svgSource: isHero ? state.heroSvgSource : state.textSvgSource,
+    colorMode: isHero ? state.heroUploadMode : state.textUploadMode,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
+}
+
+async function deletePersistentAsset(id) {
+  if (!persistenceAvailable) return;
+  try {
+    await idbDelete(ASSET_STORE, id);
+    await updateLocalAssetSummary();
+    scheduleUploadSessionSave();
+  } catch (error) {
+    handlePersistenceError(error);
+  }
+}
+
+async function restorePersistentUploads() {
+  try {
+    await openAssetDb();
+    if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => false);
+    const [records, session] = await Promise.all([
+      idbGetAll(ASSET_STORE),
+      idbGet(SESSION_STORE, 'last'),
+    ]);
+
+    for (const record of records) {
+      if (!record || !record.rasterBlob) continue;
+      try {
+        const dataURL = await blobToDataUrl(record.rasterBlob);
+        const img = await loadImageElement(dataURL);
+        if (record.role === 'custom') {
+          const custom = {
+            id: record.id,
+            name: record.name,
+            dataURL,
+            svgSource: record.svgSource || null,
+            colorMode: record.colorMode || 'original',
+            width: record.width || img.naturalWidth,
+            height: record.height || img.naturalHeight,
+            createdAt: record.createdAt || Date.now(),
+          };
+          state.customIcons.push(custom);
+          customImgEls.set(custom.id, img);
+        } else if (record.role === 'hero') {
+          state.heroCustomImage = dataURL;
+          state.heroSvgSource = record.svgSource || null;
+          state.heroAssetName = record.name || '';
+          state._heroImgEl = img;
+        } else if (record.role === 'text') {
+          state.textCustomImage = dataURL;
+          state.textSvgSource = record.svgSource || null;
+          state.textAssetName = record.name || '';
+          state._textImgEl = img;
+        }
+      } catch (error) {
+        console.warn('跳过无法恢复的素材', record.id, error);
+      }
+    }
+
+    if (session) {
+      const activeCustomIds = new Set(session.activeCustomIds || []);
+      state.customIcons.forEach(custom => {
+        if (activeCustomIds.has(custom.id)) state.activeIcons.add(custom.id);
+      });
+      ['heroEnabled', 'heroSourceMode', 'heroUploadMode', 'heroColor', 'heroSizePct', 'heroRotation', 'heroOffsetYPct',
+       'textLayerEnabled', 'textUploadMode', 'textColor', 'textSizePct', 'textRotation', 'textOffsetYPct'].forEach(key => {
+        if (session[key] !== undefined) state[key] = session[key];
+      });
+    }
+    await updateLocalAssetSummary();
+  } catch (error) {
+    handlePersistenceError(error);
+  }
+}
+
+async function updateLocalAssetSummary() {
+  const summary = document.getElementById('localAssetSummary');
+  if (!summary || !persistenceAvailable) return;
+  try {
+    const records = await idbGetAll(ASSET_STORE);
+    const bytes = records.reduce((sum, record) => sum + (record.rasterBlob?.size || 0) + ((record.svgSource?.length || 0) * 2), 0);
+    const sizeText = bytes < 1024 * 1024 ? `${Math.max(0, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+    summary.textContent = `${records.length} 项素材 · ${sizeText} · 自动恢复`;
+  } catch (error) {
+    handlePersistenceError(error);
+  }
+}
+
+async function clearAllPersistentAssets() {
+  const db = await openAssetDb();
+  const tx = db.transaction([ASSET_STORE, SESSION_STORE], 'readwrite');
+  tx.objectStore(ASSET_STORE).clear();
+  tx.objectStore(SESSION_STORE).clear();
+  await new Promise((resolve, reject) => {
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error || new Error('清空本地素材失败'));
+  });
+}
 
 // 简单可复现随机数生成器 (mulberry32)
 function makeRng(seed) {
@@ -1751,6 +2344,7 @@ function setupEventDelegation() {
       }
       buildIconGrid();
       render();
+      scheduleUploadSessionSave();
     };
   }
 
@@ -1926,6 +2520,10 @@ function updateExportUi() {
     skipFilter.checked = state.pdfSkipFilter;
     skipFilter.disabled = !(state.filterStyle && state.filterStyle !== 'none');
   }
+
+  document.querySelectorAll('#pdfRenderModeRow .hero-tab').forEach(tab => {
+    tab.classList.toggle('active', tab.dataset.pdfMode === state.pdfRenderMode);
+  });
 }
 
 function buildPresetRow() {
@@ -2024,6 +2622,7 @@ function buildIconGrid() {
             .forEach(key => customTintCache.delete(key));
           buildIconGrid();
           render();
+          deletePersistentAsset(custom.id);
         };
         el.appendChild(delBtn);
 
@@ -2392,8 +2991,9 @@ async function handleCustomIconUpload(files) {
         isVec ? `正在解析第 ${index + 1}/${validFiles.length} 个矢量文件…` : `正在转换第 ${index + 1}/${validFiles.length} 张图片…`,
         'processing'
       );
-      const rasterFile = isVec ? await convertVectorToRasterFile(file, 512) : file;
-      const finalDataURL = await convertUploadToTransparentPng(rasterFile, 512, 'black-texture');
+      const svgSource = await readSanitizedSvg(file);
+      const rasterFile = isVec ? await convertVectorToRasterFile(file, 1536) : file;
+      const finalDataURL = await convertUploadToTransparentPng(rasterFile, 1536, 'black-texture');
       const finalImg = new Image();
       await new Promise((resolve, reject) => {
         finalImg.onload = resolve;
@@ -2403,8 +3003,19 @@ async function handleCustomIconUpload(files) {
       const id = `custom_${Date.now()}_${customIconCounter++}`;
       customImgEls.set(id, finalImg);
       const colorMode = document.querySelector('input[name="customColorMode"]:checked')?.value || 'original';
-      state.customIcons.push({ id, dataURL: finalDataURL, colorMode });
+      const custom = {
+        id,
+        name: file.name,
+        dataURL: finalDataURL,
+        svgSource,
+        colorMode,
+        width: finalImg.naturalWidth,
+        height: finalImg.naturalHeight,
+        createdAt: Date.now(),
+      };
+      state.customIcons.push(custom);
       state.activeIcons.add(id);
+      await saveCustomAsset(custom, file.name);
     }
     buildIconGrid();
     render();
@@ -3907,19 +4518,152 @@ function getPatternPlacements(dims) {
   return placements;
 }
 
-function drawPatternToCanvas(canvas, dpi) {
+// ═══════════════════════════════════════════════════════
+// 颜色提取与 Pantone 色板栏
+// ═══════════════════════════════════════════════════════
+
+// 从当前 state 中提取所有实际用到的颜色（去重）
+function collectUsedColors() {
+  const set = new Set();
+  // 主调色板
+  state.colors.forEach(c => set.add(c.toUpperCase()));
+  // 背景色（仅在不是纯白时记录，避免无意义条目）
+  if (state.bg && state.bg.toUpperCase() !== '#FFFFFF') {
+    set.add(state.bg.toUpperCase());
+  }
+  // 主元素颜色（启用时）
+  if (state.heroEnabled && state.heroSourceMode === 'builtin') {
+    set.add(state.heroColor.toUpperCase());
+  }
+  // 文字图层颜色（启用且单色模式时）
+  if (state.textLayerEnabled && state.textUploadMode === 'tint') {
+    set.add(state.textColor.toUpperCase());
+  }
+  return Array.from(set);
+}
+
+// 计算色板栏高度（像素），需要根据画布宽度计算多少行
+// barConfig: { panelMM, padMM, swatchMM, textMM, gapMM, columnsTarget }
+function computeColorBarLayout(dims, totalColors) {
+  // 色板栏宽度等于画布宽度，每行排几列由画布宽度决定
+  // 一个色板条目大致占 60mm（色块10mm + 文本约50mm），所以列数 = floor(画布宽度mm / 60)
+  const itemWidthMM = 60;
+  const columns = Math.max(1, Math.floor(dims.w / itemWidthMM));
+  const rows = Math.ceil(totalColors / columns);
+  const headerMM = 8;  // 标题"印刷色板（Pantone 近似色号）"
+  const rowMM = 12;    // 每行高度
+  const footerMM = 6;  // 底部说明文字
+  const padMM = 5;     // 整体上下边距
+  const heightMM = padMM + headerMM + rowMM * rows + footerMM + padMM;
+  return { columns, rows, heightMM, padMM, headerMM, rowMM, itemWidthMM };
+}
+
+// 在指定 canvas 的指定区域内绘制色板说明栏（在画布下方）
+// canvas: 已经放大了画布尺寸（包含色板栏区域）的画布
+// patternHeightPx: 图案部分的高度（像素），色板栏会绘制在 y >= patternHeightPx 的区域
+function drawColorBar(ctx, canvas, dims, dpi, patternHeightPx) {
+  const colors = collectUsedColors();
+  if (colors.length === 0) return;
+
+  const mmToPx = dpi / 25.4;
+  const layout = computeColorBarLayout(dims, colors.length);
+  const barY = patternHeightPx;
+  const barH = layout.heightMM * mmToPx;
+  const barW = canvas.width;
+
+  // 背景白底
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, barY, barW, barH);
+  // 顶部分隔线
+  ctx.fillStyle = '#CCCCCC';
+  ctx.fillRect(0, barY, barW, Math.max(1, 0.25 * mmToPx));
+
+  const padPx = layout.padMM * mmToPx;
+  const headerPx = layout.headerMM * mmToPx;
+  const rowPx = layout.rowMM * mmToPx;
+
+  // 标题
+  ctx.fillStyle = '#333333';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  const titleFontPx = 3.2 * mmToPx;
+  ctx.font = `600 ${titleFontPx}px -apple-system, "PingFang SC", "Helvetica Neue", sans-serif`;
+  ctx.fillText('印刷色板 · Pantone 近似色号', padPx, barY + padPx + headerPx / 2);
+
+  // 色板项目网格
+  const cellW = (barW - padPx * 2) / layout.columns;
+  const swatchSize = 7 * mmToPx;
+  const swatchTextGap = 2 * mmToPx;
+  const codeFontPx = 2.6 * mmToPx;
+  const hexFontPx = 2.1 * mmToPx;
+
+  colors.forEach((hex, idx) => {
+    const row = Math.floor(idx / layout.columns);
+    const col = idx % layout.columns;
+    const cellX = padPx + col * cellW;
+    const cellY = barY + padPx + headerPx + row * rowPx;
+
+    // 色块（带细黑边）
+    ctx.fillStyle = hex;
+    ctx.fillRect(cellX, cellY + (rowPx - swatchSize) / 2, swatchSize, swatchSize);
+    ctx.strokeStyle = '#888888';
+    ctx.lineWidth = 0.2 * mmToPx;
+    ctx.strokeRect(cellX, cellY + (rowPx - swatchSize) / 2, swatchSize, swatchSize);
+
+    // 找到对应 Pantone
+    const pantone = findNearestPantone(hex);
+
+    // Pantone 编号 (粗体)
+    const textX = cellX + swatchSize + swatchTextGap;
+    const textCenterY = cellY + rowPx / 2;
+    ctx.fillStyle = '#222222';
+    ctx.font = `600 ${codeFontPx}px -apple-system, "PingFang SC", "Helvetica Neue", sans-serif`;
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(`Pantone ${pantone.code}`, textX, textCenterY - 0.3 * mmToPx);
+
+    // HEX 值 (灰色小字)
+    ctx.fillStyle = '#888888';
+    ctx.font = `${hexFontPx}px "SF Mono", Consolas, monospace`;
+    ctx.fillText(hex, textX, textCenterY + codeFontPx * 0.9);
+  });
+
+  // 底部免责说明
+  const footerY = barY + barH - layout.padMM * mmToPx - 1 * mmToPx;
+  ctx.fillStyle = '#888888';
+  ctx.font = `${2.1 * mmToPx}px -apple-system, "PingFang SC", "Helvetica Neue", sans-serif`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText('* Pantone 色号为软件计算的近似匹配，实际印刷请以工厂手头的 Pantone 实体色卡为准。', padPx, footerY);
+}
+
+
+function drawPatternToCanvas(canvas, dpi, options = {}) {
+  const includeColorBar = options.includeColorBar === true;
   const dims = getActiveDims();
   const mmToPx = dpi / 25.4;
-  canvas.width = Math.round(dims.w * mmToPx);
-  canvas.height = Math.round(dims.h * mmToPx);
+
+  // 计算色板栏高度并扩展画布
+  const colors = collectUsedColors();
+  let colorBarHeightPx = 0;
+  if (includeColorBar && colors.length > 0) {
+    const layout = computeColorBarLayout(dims, colors.length);
+    colorBarHeightPx = Math.round(layout.heightMM * mmToPx);
+  }
+
+  const patternWidthPx = Math.round(dims.w * mmToPx);
+  const patternHeightPx = Math.round(dims.h * mmToPx);
+  canvas.width = patternWidthPx;
+  canvas.height = patternHeightPx + colorBarHeightPx;
 
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // 图案区背景
   ctx.fillStyle = state.bg;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, patternWidthPx, patternHeightPx);
   ctx.save();
   ctx.beginPath();
-  ctx.rect(0, 0, canvas.width, canvas.height);
+  ctx.rect(0, 0, patternWidthPx, patternHeightPx);
   ctx.clip();
   getPatternPlacements(dims).forEach(item => {
     if (item.layerType === 'text') {
@@ -3931,9 +4675,26 @@ function drawPatternToCanvas(canvas, dpi) {
     }
   });
   ctx.restore();
-  // PNG 导出永远应用滤镜（PNG 本身是位图，滤镜效果完美保留）
-  applyFilterToCanvas(canvas, state.filterStyle, state.filterIntensity);
-  return { dims, dpi };
+
+  // 滤镜只应用到图案区，不应用到色板栏（色板栏要保持纯净便于工厂识别）
+  if (colorBarHeightPx > 0) {
+    const patternOnly = document.createElement('canvas');
+    patternOnly.width = patternWidthPx;
+    patternOnly.height = patternHeightPx;
+    patternOnly.getContext('2d').drawImage(canvas, 0, 0, patternWidthPx, patternHeightPx, 0, 0, patternWidthPx, patternHeightPx);
+    applyFilterToCanvas(patternOnly, state.filterStyle, state.filterIntensity);
+    ctx.clearRect(0, 0, patternWidthPx, patternHeightPx);
+    ctx.drawImage(patternOnly, 0, 0);
+  } else {
+    applyFilterToCanvas(canvas, state.filterStyle, state.filterIntensity);
+  }
+
+  // 绘制色板栏
+  if (colorBarHeightPx > 0) {
+    drawColorBar(ctx, canvas, dims, dpi, patternHeightPx);
+  }
+
+  return { dims, dpi, patternHeightPx, colorBarHeightPx };
 }
 
 function downloadBlob(blob, filename) {
@@ -3947,7 +4708,15 @@ function downloadBlob(blob, filename) {
 
 function exportPngAtDpi(dpi) {
   const exportCanvas = document.createElement('canvas');
-  const { dims } = drawPatternToCanvas(exportCanvas, dpi);
+  const { dims } = drawPatternToCanvas(exportCanvas, dpi, { includeColorBar: false });
+  setLastExportMeta({
+    type: 'png',
+    width: exportCanvas.width,
+    height: exportCanvas.height,
+    expectedWidth: Math.round(dims.w * dpi / 25.4),
+    expectedHeight: Math.round(dims.h * dpi / 25.4),
+    includesPantonePage: false,
+  });
   exportCanvas.toBlob(blob => {
     if (!blob) {
       alert('导出失败：当前尺寸和 DPI 过大，请降低尺寸或 DPI 后重试。');
@@ -4145,61 +4914,151 @@ function buildPdf(objects) {
   return pdf;
 }
 
-function exportPdfWithOptions() {
+function legacyExportPdfWithOptions() {
   const dims = getActiveDims();
   const dpi = state.exportDpi;
   const mmToPx = dpi / 25.4;
+  const ptPerMm = 72 / 25.4;
 
-  const exportCanvas = document.createElement('canvas');
-  exportCanvas.width = Math.round(dims.w * mmToPx);
-  exportCanvas.height = Math.round(dims.h * mmToPx);
-  const ctx = exportCanvas.getContext('2d');
+  // 色板栏高度（仅参与PDF的页面高度计算）
+  const colors = collectUsedColors();
+  let colorBarHeightMM = 0;
+  if (colors.length > 0) {
+    const layout = computeColorBarLayout(dims, colors.length);
+    colorBarHeightMM = layout.heightMM;
+  }
+  const totalPageHeightMM = dims.h + colorBarHeightMM;
 
-  // 背景
-  ctx.fillStyle = state.bg;
-  ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(0, 0, exportCanvas.width, exportCanvas.height);
-  ctx.clip();
+  const pageW = dims.w * ptPerMm;
+  const pageH = totalPageHeightMM * ptPerMm;
+  const patternRectH = dims.h * ptPerMm;
 
-  getPatternPlacements(dims).forEach(item => {
-    // 根据跳过选项过滤
+  // 分类 placements
+  const allPlacements = getPatternPlacements(dims);
+  const vectorItems = [];   // 可输出为矢量的图标
+  const rasterItems = [];   // 需要位图嵌入的（emoji/数字符号/自定义图标/上传图）/文字图层
+
+  allPlacements.forEach(item => {
+    // 用户勾选跳过
     if (item.layerType === 'text' && state.pdfSkipTextLayer) return;
     if (item.isHero && state.heroCustomImage && state.pdfSkipHeroImage) return;
     if (typeof item.iconType === 'string' && item.iconType.startsWith('custom_') && state.pdfSkipCustomIcons) return;
     const iconDef = ICONS[item.iconType];
     if (iconDef && (iconDef.isEmoji || iconDef.isText) && state.pdfSkipEmojiIcons) return;
 
-    if (item.layerType === 'text') {
-      drawTextImageAt(ctx, item.x * mmToPx, item.y * mmToPx, item.angle, item.sizeMM * mmToPx);
-    } else if (item.isHero && state.heroCustomImage) {
-      drawHeroImageAt(ctx, item.x * mmToPx, item.y * mmToPx, item.angle, item.sizeMM * mmToPx);
+    const isText = item.layerType === 'text';
+    const isHeroImage = item.isHero && state.heroCustomImage;
+    const isCustomIcon = typeof item.iconType === 'string' && item.iconType.startsWith('custom_');
+    const isEmojiOrSymbol = iconDef && (iconDef.isEmoji || iconDef.isText);
+    if (isText || isHeroImage || isCustomIcon || isEmojiOrSymbol) {
+      rasterItems.push(item);
     } else {
-      drawIconAt(ctx, item.x * mmToPx, item.y * mmToPx, item.angle, item.iconType, item.sizeMM * mmToPx, item.color, item.halfBox * mmToPx);
+      vectorItems.push(item);
     }
   });
 
-  ctx.restore();
+  const hasActiveFilter = state.filterStyle && state.filterStyle !== 'none' && !state.pdfSkipFilter;
+  const needFullRaster = hasActiveFilter || rasterItems.length > 0;
+  // ↑ 关键判断：只要有 emoji/上传图/滤镜，整个图案区都走"全栅格化嵌入"路径
+  // 这是行业标准做法，避免 PDF 透明叠加的复杂度。
+  // 反之，只有当所有元素都是内置矢量形状、且无滤镜时，才走 100% 矢量路径。
 
-  // 应用滤镜（如果未跳过）
-  if (!state.pdfSkipFilter) {
-    applyFilterToCanvas(exportCanvas, state.filterStyle, state.filterIntensity);
+  const pdfImages = []; // 待嵌入 PDF 的图像对象
+  let contentStream = `q\n1 0 0 -1 0 ${pdfNum(pageH)} cm\n`;
+
+  if (needFullRaster) {
+    // ── 全栅格化路径 ──
+    // 画一张包含所有元素 + 滤镜的高 DPI 图像，整块嵌入 PDF 图案区
+    const fullCanvas = document.createElement('canvas');
+    const fullW = Math.round(dims.w * mmToPx);
+    const fullH = Math.round(dims.h * mmToPx);
+    fullCanvas.width = fullW;
+    fullCanvas.height = fullH;
+    const fctx = fullCanvas.getContext('2d');
+    fctx.fillStyle = state.bg;
+    fctx.fillRect(0, 0, fullW, fullH);
+    fctx.save();
+    fctx.beginPath();
+    fctx.rect(0, 0, fullW, fullH);
+    fctx.clip();
+    [...vectorItems, ...rasterItems].forEach(item => {
+      if (item.layerType === 'text') {
+        drawTextImageAt(fctx, item.x * mmToPx, item.y * mmToPx, item.angle, item.sizeMM * mmToPx);
+      } else if (item.isHero && state.heroCustomImage) {
+        drawHeroImageAt(fctx, item.x * mmToPx, item.y * mmToPx, item.angle, item.sizeMM * mmToPx);
+      } else {
+        drawIconAt(fctx, item.x * mmToPx, item.y * mmToPx, item.angle, item.iconType, item.sizeMM * mmToPx, item.color, item.halfBox * mmToPx);
+      }
+    });
+    fctx.restore();
+    if (hasActiveFilter) {
+      applyFilterToCanvas(fullCanvas, state.filterStyle, state.filterIntensity);
+    }
+
+    const dataURL = fullCanvas.toDataURL('image/jpeg', 0.92);
+    pdfImages.push({
+      bytes: dataURLToBytes(dataURL),
+      width: fullW, height: fullH,
+      x: 0, y: 0, w: pageW, h: patternRectH,
+    });
+  } else {
+    // ── 100% 矢量路径 ──
+    // 背景填充
+    contentStream += `${pdfRgb(state.bg)} rg\n0 0 ${pdfNum(pageW)} ${pdfNum(patternRectH)} re f\n`;
+    // 裁剪到图案区
+    contentStream += `q\n0 0 ${pdfNum(pageW)} ${pdfNum(patternRectH)} re W n\n`;
+
+    const strokePt = state.stroke * 0.2117 * ptPerMm;
+    vectorItems.forEach(item => {
+      const x = item.x * ptPerMm;
+      const y = item.y * ptPerMm;
+      const s = item.sizeMM * ptPerMm;
+      const cos = Math.cos(item.angle);
+      const sin = Math.sin(item.angle);
+      const rgb = pdfRgb(item.color);
+      contentStream += `q\n${pdfNum(cos)} ${pdfNum(sin)} ${pdfNum(-sin)} ${pdfNum(cos)} ${pdfNum(x)} ${pdfNum(y)} cm\n`;
+      contentStream += `${rgb} rg\n${rgb} RG\n${pdfNum(strokePt)} w\n1 J 1 j\n`;
+      contentStream += pdfIconOps(item.iconType, s, state.filled);
+      contentStream += 'Q\n';
+    });
+
+    contentStream += 'Q\n'; // 关闭裁剪
   }
 
-  // 转为 JPEG 嵌入 PDF
-  const jpegDataURL = exportCanvas.toDataURL('image/jpeg', 0.92);
-  const base64 = jpegDataURL.split(',')[1];
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  // ── 色板栏 ──
+  if (colorBarHeightMM > 0) {
+    const barCanvas = document.createElement('canvas');
+    const barW = Math.round(dims.w * mmToPx);
+    const barH = Math.round(colorBarHeightMM * mmToPx);
+    barCanvas.width = barW;
+    barCanvas.height = barH;
+    drawColorBar(barCanvas.getContext('2d'), barCanvas, dims, dpi, 0);
 
-  const ptPerMm = 72 / 25.4;
-  const pageW = dims.w * ptPerMm;
-  const pageH = dims.h * ptPerMm;
+    const barDataURL = barCanvas.toDataURL('image/jpeg', 0.95);
+    pdfImages.push({
+      bytes: dataURLToBytes(barDataURL),
+      width: barW, height: barH,
+      x: 0, y: patternRectH,
+      w: pageW, h: colorBarHeightMM * ptPerMm,
+    });
+  }
 
-  const contentStream = `q\n${pdfNum(pageW)} 0 0 ${pdfNum(pageH)} 0 0 cm\n/Im0 Do\nQ\n`;
-  const pageObj = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pdfNum(pageW)} ${pdfNum(pageH)}] /Resources << /XObject << /Im0 5 0 R >> >> /Contents 4 0 R >>`;
+  // ── 把图像列表写入 stream ──
+  pdfImages.forEach((img, idx) => {
+    const imName = `Im${idx}`;
+    // 反转坐标系下：图像 (x, y, w, h) 对应 PDF 的 cm 变换
+    // 由于外层已经 1 0 0 -1 0 pageH cm（y翻转），图像本身要再翻转一次（-h），并把锚点放在左上
+    contentStream += `q\n${pdfNum(img.w)} 0 0 ${pdfNum(-img.h)} ${pdfNum(img.x)} ${pdfNum(img.y + img.h)} cm\n/${imName} Do\nQ\n`;
+  });
+
+  contentStream += 'Q\n'; // 关闭最外层
+
+  // ── 构造 PDF 对象 ──
+  const xobjectEntries = pdfImages.map((img, idx) => `/Im${idx} ${5 + idx} 0 R`).join(' ');
+  const resources = xobjectEntries
+    ? `<< /XObject << ${xobjectEntries} >> >>`
+    : '<< >>';
+  const pageObj = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pdfNum(pageW)} ${pdfNum(pageH)}] /Resources ${resources} /Contents 4 0 R >>`;
   const objStrings = [
     '<< /Type /Catalog /Pages 2 0 R >>',
     '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
@@ -4207,12 +5066,9 @@ function exportPdfWithOptions() {
     `<< /Length ${contentStream.length} >>\nstream\n${contentStream}endstream`,
   ];
 
-  const imgObj = `<< /Type /XObject /Subtype /Image /Width ${exportCanvas.width} /Height ${exportCanvas.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${bytes.length} >>\nstream\n`;
-  const imgObjEnd = '\nendstream';
-
   const encoder = new TextEncoder();
   const parts = [];
-  parts.push(encoder.encode('%PDF-1.4\n'));
+  parts.push(encoder.encode('%PDF-1.4\n%\xC4\xE5\xF2\xE5\xEB\xA7\xF3\xA0\xD0\xC4\xC6\n'));
   const offsets = [0];
 
   for (let i = 0; i < objStrings.length; i++) {
@@ -4220,17 +5076,23 @@ function exportPdfWithOptions() {
     parts.push(encoder.encode(`${i + 1} 0 obj\n${objStrings[i]}\nendobj\n`));
   }
 
-  const imgObjPos = parts.reduce((s, p) => s + p.length, 0);
-  offsets.push(imgObjPos);
-  parts.push(encoder.encode(`5 0 obj\n${imgObj}`));
-  parts.push(bytes);
-  parts.push(encoder.encode(`${imgObjEnd}\nendobj\n`));
+  pdfImages.forEach((img, idx) => {
+    const objNum = 5 + idx;
+    offsets.push(parts.reduce((s, p) => s + p.length, 0));
+    const imgObj = `<< /Type /XObject /Subtype /Image /Width ${img.width} /Height ${img.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${img.bytes.length} >>\nstream\n`;
+    parts.push(encoder.encode(`${objNum} 0 obj\n${imgObj}`));
+    parts.push(img.bytes);
+    parts.push(encoder.encode('\nendstream\nendobj\n'));
+  });
 
+  const totalObjects = 4 + pdfImages.length;
   const xrefStart = parts.reduce((s, p) => s + p.length, 0);
-  let xref = 'xref\n0 6\n0000000000 65535 f \n';
-  for (let i = 1; i <= 5; i++) xref += String(offsets[i]).padStart(10, '0') + ' 00000 n \n';
+  let xref = `xref\n0 ${totalObjects + 1}\n0000000000 65535 f \n`;
+  for (let i = 1; i <= totalObjects; i++) {
+    xref += String(offsets[i]).padStart(10, '0') + ' 00000 n \n';
+  }
   parts.push(encoder.encode(xref));
-  parts.push(encoder.encode(`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`));
+  parts.push(encoder.encode(`trailer\n<< /Size ${totalObjects + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`));
 
   const totalLen = parts.reduce((s, p) => s + p.length, 0);
   const finalBytes = new Uint8Array(totalLen);
@@ -4238,85 +5100,425 @@ function exportPdfWithOptions() {
   for (const p of parts) { finalBytes.set(p, pos); pos += p.length; }
 
   const blob = new Blob([finalBytes], { type: 'application/pdf' });
-  downloadBlob(blob, `碎花图案_${dims.w}x${dims.h}mm_${dpi}dpi.pdf`);
+  const suffix = needFullRaster ? 'raster' : 'vector';
+  downloadBlob(blob, `碎花图案_${dims.w}x${dims.h}mm_${suffix}.pdf`);
 }
 
-// 位图嵌入式 PDF 导出：把高分辨率的带滤镜画布嵌入到 PDF 页面中
-// 注意：这会失去矢量缩放无损的特性，但能保留滤镜的真实效果
-async function exportRasterPdfWithFilter() {
+const PANTONE_EXPORT_NOTICE = 'Pantone 匹配只覆盖约 256 个近似色，并非完整官方色库。色号仅供参考，请用实际色卡对照设计稿来调整。';
+
+function canvasToBlob(canvas, type = 'image/png', quality) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('画布转换失败')), type, quality);
+  });
+}
+
+function setLastExportMeta(meta) {
+  window.__lastExportMeta = meta;
+  const button = document.getElementById('exportBtn');
+  if (button) button.dataset.lastExportMeta = JSON.stringify(meta);
+}
+
+function wrapCanvasText(ctx, text, maxWidth) {
+  const chars = [...text];
+  const lines = [];
+  let line = '';
+  chars.forEach(char => {
+    const candidate = line + char;
+    if (line && ctx.measureText(candidate).width > maxWidth) {
+      lines.push(line);
+      line = char;
+    } else {
+      line = candidate;
+    }
+  });
+  if (line) lines.push(line);
+  return lines;
+}
+
+function createPantonePageCanvas(dims, dpi) {
+  const colors = collectUsedColors();
+  const renderDpi = Math.min(Math.max(dpi, 300), 600);
+  const mmToPx = renderDpi / 25.4;
+  const pageWidthPx = Math.max(1, Math.round(dims.w * mmToPx));
+  const columns = Math.max(1, Math.floor(dims.w / 60));
+  const rows = Math.max(1, Math.ceil(colors.length / columns));
+  const padMM = 7;
+  const titleMM = 10;
+  const rowMM = 14;
+  const noticeFontPx = 2.8 * mmToPx;
+  const lineHeightPx = 4.6 * mmToPx;
+  const measureCanvas = document.createElement('canvas');
+  const measureCtx = measureCanvas.getContext('2d');
+  measureCtx.font = `${noticeFontPx}px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif`;
+  const noticeLines = wrapCanvasText(measureCtx, PANTONE_EXPORT_NOTICE, pageWidthPx - padMM * 2 * mmToPx);
+  const noticeMM = Math.max(12, (noticeLines.length * lineHeightPx) / mmToPx + 4);
+  const heightMM = padMM + titleMM + rows * rowMM + noticeMM + padMM;
+  const canvas = document.createElement('canvas');
+  canvas.width = pageWidthPx;
+  canvas.height = Math.max(1, Math.round(heightMM * mmToPx));
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const padPx = padMM * mmToPx;
+  const titlePx = titleMM * mmToPx;
+  const rowPx = rowMM * mmToPx;
+  ctx.fillStyle = '#222222';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.font = `600 ${4 * mmToPx}px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif`;
+  ctx.fillText('印刷色板 · Pantone 近似色号', padPx, padPx + titlePx / 2);
+  const cellWidth = (canvas.width - padPx * 2) / columns;
+  const swatchSize = 8 * mmToPx;
+
+  colors.forEach((hex, index) => {
+    const row = Math.floor(index / columns);
+    const col = index % columns;
+    const cellX = padPx + col * cellWidth;
+    const cellY = padPx + titlePx + row * rowPx;
+    const swatchY = cellY + (rowPx - swatchSize) / 2;
+    ctx.fillStyle = hex;
+    ctx.fillRect(cellX, swatchY, swatchSize, swatchSize);
+    ctx.strokeStyle = '#777777';
+    ctx.lineWidth = Math.max(1, 0.2 * mmToPx);
+    ctx.strokeRect(cellX, swatchY, swatchSize, swatchSize);
+    const pantone = findNearestPantone(hex);
+    const textX = cellX + swatchSize + 2.2 * mmToPx;
+    const centerY = cellY + rowPx / 2;
+    ctx.fillStyle = '#222222';
+    ctx.textBaseline = 'alphabetic';
+    ctx.font = `600 ${2.8 * mmToPx}px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif`;
+    ctx.fillText(`Pantone ${pantone.code}`, textX, centerY - 0.4 * mmToPx);
+    ctx.fillStyle = '#777777';
+    ctx.font = `${2.2 * mmToPx}px "SF Mono", Consolas, monospace`;
+    ctx.fillText(hex, textX, centerY + 3 * mmToPx);
+  });
+
+  const noticeTop = padPx + titlePx + rows * rowPx + 3 * mmToPx;
+  ctx.fillStyle = '#666666';
+  ctx.font = `${noticeFontPx}px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif`;
+  ctx.textBaseline = 'top';
+  noticeLines.forEach((line, index) => ctx.fillText(line, padPx, noticeTop + index * lineHeightPx));
+  return { canvas, heightMM, renderDpi };
+}
+
+function ensureExternalScript(src, ready) {
+  if (ready()) return Promise.resolve();
+  const existing = document.querySelector(`script[data-export-src="${src}"]`);
+  if (existing) {
+    return new Promise((resolve, reject) => {
+      existing.addEventListener('load', resolve, { once: true });
+      existing.addEventListener('error', () => reject(new Error('导出组件加载失败')), { once: true });
+    });
+  }
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = src;
+    script.dataset.exportSrc = src;
+    script.onload = resolve;
+    script.onerror = () => reject(new Error('导出组件加载失败，请检查网络连接'));
+    document.head.appendChild(script);
+  });
+}
+
+async function ensurePdfExportLibraries(includeSvg = false) {
+  await ensureExternalScript(
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js',
+    () => !!window.PDFLib
+  );
+  if (includeSvg) {
+    await ensureExternalScript(
+      'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+      () => !!window.jspdf?.jsPDF
+    );
+    await ensureExternalScript(
+      'https://cdn.jsdelivr.net/npm/svg2pdf.js@2.2.4/dist/svg2pdf.umd.min.js',
+      () => !!window.jspdf?.jsPDF?.API?.svg
+    );
+  }
+}
+
+function chooseFilterExportMode() {
+  const dialog = document.getElementById('filterExportDialog');
+  dialog.classList.add('open');
+  return new Promise(resolve => {
+    const finish = choice => {
+      dialog.classList.remove('open');
+      dialog.querySelectorAll('[data-filter-choice]').forEach(button => button.removeEventListener('click', onClick));
+      resolve(choice);
+    };
+    const onClick = event => finish(event.currentTarget.dataset.filterChoice);
+    dialog.querySelectorAll('[data-filter-choice]').forEach(button => button.addEventListener('click', onClick));
+  });
+}
+
+function shouldSkipPdfItem(item) {
+  if (item.layerType === 'text' && state.pdfSkipTextLayer) return true;
+  if (item.isHero && state.heroCustomImage && state.pdfSkipHeroImage) return true;
+  if (typeof item.iconType === 'string' && item.iconType.startsWith('custom_') && state.pdfSkipCustomIcons) return true;
+  const iconDef = ICONS[item.iconType];
+  return !!(iconDef && (iconDef.isEmoji || iconDef.isText) && state.pdfSkipEmojiIcons);
+}
+
+function makeRawSinglePagePdf(width, height, content) {
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pdfNum(width)} ${pdfNum(height)}] /Resources << >> /Contents 4 0 R >>`,
+    `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+  ];
+  const encoder = new TextEncoder();
+  const parts = [encoder.encode('%PDF-1.4\n')];
+  const offsets = [0];
+  objects.forEach((object, index) => {
+    offsets[index + 1] = parts.reduce((sum, part) => sum + part.length, 0);
+    parts.push(encoder.encode(`${index + 1} 0 obj\n${object}\nendobj\n`));
+  });
+  const xrefStart = parts.reduce((sum, part) => sum + part.length, 0);
+  let xref = `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (let i = 1; i <= objects.length; i++) xref += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`;
+  parts.push(encoder.encode(xref));
+  parts.push(encoder.encode(`trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`));
+  const length = parts.reduce((sum, part) => sum + part.length, 0);
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  parts.forEach(part => { bytes.set(part, offset); offset += part.length; });
+  return bytes;
+}
+
+function createVectorIconPdf(item) {
+  const pageSize = 1000;
+  const itemSizePt = Math.max(0.1, item.sizeMM * 72 / 25.4);
+  const strokePt = state.stroke * 0.2117 * 72 / 25.4;
+  const normalizedStroke = strokePt / itemSizePt * pageSize;
+  const color = pdfRgb(item.color);
+  const content = `q\n1 0 0 1 500 500 cm\n${color} rg\n${color} RG\n${pdfNum(normalizedStroke)} w\n1 J 1 j\n${pdfIconOps(item.iconType, 900, state.filled)}Q\n`;
+  return makeRawSinglePagePdf(pageSize, pageSize, content);
+}
+
+function applySvgExportColor(svgSource, targetColor) {
+  if (!targetColor) return svgSource;
+  const doc = new DOMParser().parseFromString(svgSource, 'image/svg+xml');
+  doc.querySelectorAll('*').forEach(node => {
+    const fill = node.getAttribute('fill');
+    const stroke = node.getAttribute('stroke');
+    if (fill && fill !== 'none' && !fill.startsWith('url(')) node.setAttribute('fill', targetColor);
+    if (stroke && stroke !== 'none' && !stroke.startsWith('url(')) node.setAttribute('stroke', targetColor);
+    if (node.hasAttribute('style')) {
+      const style = node.getAttribute('style')
+        .replace(/fill\s*:\s*(?!none|url\()[^;]+/gi, `fill:${targetColor}`)
+        .replace(/stroke\s*:\s*(?!none|url\()[^;]+/gi, `stroke:${targetColor}`);
+      node.setAttribute('style', style);
+    }
+  });
+  return new XMLSerializer().serializeToString(doc.documentElement);
+}
+
+function getSvgDescriptor(item) {
+  if (item.layerType === 'text' && state.textSvgSource) {
+    return { source: state.textSvgSource, color: state.textUploadMode === 'tint' ? state.textColor : null };
+  }
+  if (item.isHero && state.heroCustomImage && state.heroSvgSource) {
+    return { source: state.heroSvgSource, color: state.heroUploadMode === 'tint' ? state.heroColor : null };
+  }
+  if (typeof item.iconType === 'string' && item.iconType.startsWith('custom_')) {
+    const custom = state.customIcons.find(entry => entry.id === item.iconType);
+    if (custom?.svgSource) {
+      return { source: custom.svgSource, color: custom.colorMode === 'tint' ? item.color : '#111111' };
+    }
+  }
+  return null;
+}
+
+async function createSvgPdfAsset(svgDescriptor) {
+  const source = applySvgExportColor(svgDescriptor.source, svgDescriptor.color);
+  const doc = new DOMParser().parseFromString(source, 'image/svg+xml');
+  const svg = doc.documentElement;
+  const viewBox = (svg.getAttribute('viewBox') || '').trim().split(/[ ,]+/).map(Number);
+  let width = parseFloat(svg.getAttribute('width')) || 1000;
+  let height = parseFloat(svg.getAttribute('height')) || 1000;
+  if (viewBox.length === 4 && viewBox.every(Number.isFinite) && viewBox[2] > 0 && viewBox[3] > 0) {
+    width = viewBox[2];
+    height = viewBox[3];
+  }
+  const ratio = Math.max(0.01, width / height);
+  const pageW = ratio >= 1 ? 1000 : 1000 * ratio;
+  const pageH = ratio >= 1 ? 1000 / ratio : 1000;
+  const jsPdf = new window.jspdf.jsPDF({ unit: 'pt', format: [pageW, pageH], compress: true });
+  await jsPdf.svg(svg, { x: 0, y: 0, width: pageW, height: pageH });
+  return { bytes: new Uint8Array(jsPdf.output('arraybuffer')), ratio };
+}
+
+function renderRasterTile(item, sizePx = 1400) {
+  const { widthMM, heightMM } = getItemPhysicalSize(item);
+  const ratio = Math.max(0.01, widthMM / heightMM);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(ratio >= 1 ? sizePx : sizePx * ratio));
+  canvas.height = Math.max(1, Math.round(ratio >= 1 ? sizePx / ratio : sizePx));
+  const ctx = canvas.getContext('2d');
+  const drawSize = (item.layerType === 'text' || (item.isHero && state.heroCustomImage))
+    ? canvas.height
+    : Math.max(canvas.width, canvas.height);
+  if (item.layerType === 'text') {
+    drawTextImageAt(ctx, canvas.width / 2, canvas.height / 2, 0, drawSize);
+  } else if (item.isHero && state.heroCustomImage) {
+    drawHeroImageAt(ctx, canvas.width / 2, canvas.height / 2, 0, drawSize);
+  } else {
+    drawIconAt(ctx, canvas.width / 2, canvas.height / 2, 0, item.iconType, drawSize, item.color, item.halfBox || 0);
+  }
+  return canvas.toDataURL('image/png');
+}
+
+function getItemPhysicalSize(item) {
+  let ratio = 1;
+  if (item.layerType === 'text' && state._textImgEl) ratio = (state._textImgEl.naturalWidth || 1) / (state._textImgEl.naturalHeight || 1);
+  else if (item.isHero && state.heroCustomImage && state._heroImgEl) ratio = (state._heroImgEl.naturalWidth || 1) / (state._heroImgEl.naturalHeight || 1);
+  else if (typeof item.iconType === 'string' && item.iconType.startsWith('custom_')) {
+    const img = customImgEls.get(item.iconType);
+    ratio = img ? (img.naturalWidth || 1) / (img.naturalHeight || 1) : 1;
+    if (ratio >= 1) return { widthMM: item.sizeMM, heightMM: item.sizeMM / ratio };
+    return { widthMM: item.sizeMM * ratio, heightMM: item.sizeMM };
+  }
+  return { widthMM: item.sizeMM * ratio, heightMM: item.sizeMM };
+}
+
+function centeredPlacementOptions(item, widthPt, heightPt, pageHeightPt) {
+  const theta = -item.angle;
+  const cos = Math.cos(theta);
+  const sin = Math.sin(theta);
+  const centerX = item.x * 72 / 25.4;
+  const centerY = pageHeightPt - item.y * 72 / 25.4;
+  return {
+    x: centerX - cos * widthPt / 2 + sin * heightPt / 2,
+    y: centerY - sin * widthPt / 2 - cos * heightPt / 2,
+    width: widthPt,
+    height: heightPt,
+    rotate: window.PDFLib.degrees(theta * 180 / Math.PI),
+  };
+}
+
+async function exportPdfWithOptions() {
+  const hasFilter = state.filterStyle && state.filterStyle !== 'none' && !state.pdfSkipFilter;
+  let renderMode = state.pdfRenderMode;
+  if (renderMode === 'hybrid' && hasFilter) {
+    const choice = await chooseFilterExportMode();
+    if (choice === 'cancel') return;
+    renderMode = choice === 'raster' ? 'raster' : 'hybrid';
+  }
+
   const dims = getActiveDims();
-  // 用 600 DPI 渲染保证打印质量；更高的话文件会太大
-  const exportDpi = 600;
-  const exportCanvas = document.createElement('canvas');
-  drawPatternToCanvas(exportCanvas, exportDpi);
-
-  const jpegDataURL = exportCanvas.toDataURL('image/jpeg', 0.92);
-  const base64 = jpegDataURL.split(',')[1];
-
-  // 将 base64 转为二进制数据
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-
+  const dpi = state.exportDpi;
+  const placements = getPatternPlacements(dims).filter(item => !shouldSkipPdfItem(item));
+  const hasSvg = renderMode === 'hybrid' && placements.some(item => !!getSvgDescriptor(item));
+  await ensurePdfExportLibraries(hasSvg);
+  const { PDFDocument, rgb } = window.PDFLib;
+  const pdfDoc = await PDFDocument.create();
   const ptPerMm = 72 / 25.4;
   const pageW = dims.w * ptPerMm;
   const pageH = dims.h * ptPerMm;
+  const patternPage = pdfDoc.addPage([pageW, pageH]);
+  const bgR = parseInt(state.bg.slice(1, 3), 16) / 255;
+  const bgG = parseInt(state.bg.slice(3, 5), 16) / 255;
+  const bgB = parseInt(state.bg.slice(5, 7), 16) / 255;
+  patternPage.drawRectangle({ x: 0, y: 0, width: pageW, height: pageH, color: rgb(bgR, bgG, bgB) });
 
-  // 构造 PDF 对象，注意图片对象需要单独编号
-  // 这次的 PDF 结构: Catalog, Pages, Page, Contents stream, XObject (Image)
-  const imgObj = `<< /Type /XObject /Subtype /Image /Width ${exportCanvas.width} /Height ${exportCanvas.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${bytes.length} >>\nstream\n`;
-  const imgObjEnd = '\nendstream';
+  const warnings = [];
+  let builtInVectorCount = 0;
+  let svgVectorCount = 0;
+  let rasterItemCount = 0;
+  if (renderMode === 'raster') {
+    const canvas = document.createElement('canvas');
+    drawPatternToCanvas(canvas, dpi, { includeColorBar: false });
+    const image = await pdfDoc.embedPng(await (await canvasToBlob(canvas)).arrayBuffer());
+    patternPage.drawImage(image, { x: 0, y: 0, width: pageW, height: pageH });
+  } else {
+    const vectorCache = new Map();
+    const svgCache = new Map();
+    const rasterCache = new Map();
+    for (const item of placements) {
+      const iconDef = ICONS[item.iconType];
+      const svgDescriptor = getSvgDescriptor(item);
+      const isBuiltInVector = !svgDescriptor && !(typeof item.iconType === 'string' && item.iconType.startsWith('custom_')) &&
+        item.layerType !== 'text' && !(item.isHero && state.heroCustomImage) && iconDef && !iconDef.isEmoji && !iconDef.isText;
+      const { widthMM, heightMM } = getItemPhysicalSize(item);
+      const widthPt = widthMM * ptPerMm;
+      const heightPt = heightMM * ptPerMm;
+      const placement = centeredPlacementOptions(item, widthPt, heightPt, pageH);
 
-  const contentStream = `q\n${pdfNum(pageW)} 0 0 ${pdfNum(pageH)} 0 0 cm\n/Im0 Do\nQ\n`;
+      if (isBuiltInVector) {
+        const key = `${item.iconType}|${item.color}|${state.filled}|${state.stroke}|${item.sizeMM.toFixed(3)}`;
+        if (!vectorCache.has(key)) {
+          const [asset] = await pdfDoc.embedPdf(createVectorIconPdf(item), [0]);
+          vectorCache.set(key, asset);
+        }
+        patternPage.drawPage(vectorCache.get(key), placement);
+        builtInVectorCount++;
+        continue;
+      }
 
-  const pageObj = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pdfNum(pageW)} ${pdfNum(pageH)}] /Resources << /XObject << /Im0 5 0 R >> >> /Contents 4 0 R >>`;
-  const objStrings = [
-    '<< /Type /Catalog /Pages 2 0 R >>',
-    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    pageObj,
-    `<< /Length ${contentStream.length} >>\nstream\n${contentStream}endstream`,
-  ];
+      if (svgDescriptor) {
+        const key = `${svgDescriptor.source}|${svgDescriptor.color || ''}`;
+        try {
+          if (!svgCache.has(key)) {
+            const assetData = await createSvgPdfAsset(svgDescriptor);
+            const [asset] = await pdfDoc.embedPdf(assetData.bytes, [0]);
+            svgCache.set(key, asset);
+          }
+          patternPage.drawPage(svgCache.get(key), placement);
+          svgVectorCount++;
+          continue;
+        } catch (error) {
+          console.warn('SVG 矢量导出失败，回退位图', error);
+          warnings.push('部分 SVG 使用了不兼容特性，已按高质量位图嵌入。');
+        }
+      }
 
-  // 手工构造 PDF 文件，需要直接拼接字节流（因为图像数据不是纯文本）
-  const encoder = new TextEncoder();
-  const parts = [];
-  parts.push(encoder.encode('%PDF-1.4\n'));
-  const offsets = [0];
-
-  for (let i = 0; i < objStrings.length; i++) {
-    const objPos = parts.reduce((sum, p) => sum + p.length, 0);
-    offsets.push(objPos);
-    parts.push(encoder.encode(`${i + 1} 0 obj\n${objStrings[i]}\nendobj\n`));
+      const rasterKey = `${item.layerType || ''}|${item.iconType}|${item.color}|${item.isHero ? 'hero' : ''}`;
+      if (!rasterCache.has(rasterKey)) {
+        const dataURL = renderRasterTile(item);
+        rasterCache.set(rasterKey, await pdfDoc.embedPng(dataURLToBytes(dataURL)));
+      }
+      patternPage.drawImage(rasterCache.get(rasterKey), placement);
+      rasterItemCount++;
+    }
   }
 
-  // 第 5 个对象：图像 XObject
-  const imgObjPos = parts.reduce((sum, p) => sum + p.length, 0);
-  offsets.push(imgObjPos);
-  parts.push(encoder.encode(`5 0 obj\n${imgObj}`));
-  parts.push(bytes);
-  parts.push(encoder.encode(`${imgObjEnd}\nendobj\n`));
+  const palette = createPantonePageCanvas(dims, dpi);
+  const palettePageH = palette.heightMM * ptPerMm;
+  const palettePage = pdfDoc.addPage([pageW, palettePageH]);
+  const paletteImage = await pdfDoc.embedPng(await (await canvasToBlob(palette.canvas)).arrayBuffer());
+  palettePage.drawImage(paletteImage, { x: 0, y: 0, width: pageW, height: palettePageH });
 
-  // xref 表
-  const xrefStart = parts.reduce((sum, p) => sum + p.length, 0);
-  let xref = `xref\n0 6\n0000000000 65535 f \n`;
-  for (let i = 1; i <= 5; i++) {
-    xref += String(offsets[i]).padStart(10, '0') + ' 00000 n \n';
-  }
-  parts.push(encoder.encode(xref));
-  parts.push(encoder.encode(`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`));
-
-  // 合并所有字节
-  const totalLen = parts.reduce((sum, p) => sum + p.length, 0);
-  const finalBytes = new Uint8Array(totalLen);
-  let pos = 0;
-  for (const p of parts) {
-    finalBytes.set(p, pos);
-    pos += p.length;
-  }
-
-  const blob = new Blob([finalBytes], { type: 'application/pdf' });
-  downloadBlob(blob, `碎花图案_${dims.w}x${dims.h}mm_with_filter.pdf`);
+  pdfDoc.setTitle('碎花图案与 Pantone 近似色板');
+  pdfDoc.setSubject(PANTONE_EXPORT_NOTICE);
+  const bytes = await pdfDoc.save({ useObjectStreams: false });
+  setLastExportMeta({
+    type: 'pdf',
+    pageCount: pdfDoc.getPageCount(),
+    pageSizes: pdfDoc.getPages().map(page => page.getSize()),
+    byteLength: bytes.length,
+    renderMode,
+    builtInVectorCount,
+    svgVectorCount,
+    rasterItemCount,
+    pantoneNotice: PANTONE_EXPORT_NOTICE,
+  });
+  const blob = new Blob([bytes], { type: 'application/pdf' });
+  downloadBlob(blob, `碎花图案_${dims.w}x${dims.h}mm_${renderMode === 'hybrid' ? 'vector' : `${dpi}dpi`}.pdf`);
+  if (warnings.length) alert([...new Set(warnings)].join('\n'));
 }
+
+// 工具函数：将 dataURL 转换为 Uint8Array
+function dataURLToBytes(dataURL) {
+  const base64 = dataURL.split(',')[1];
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+// 位图嵌入式 PDF 导出：已被新的 exportPdfWithOptions 统一处理，不再使用
+
 
 document.getElementById('density').oninput = (e) => {
   state.density = parseFloat(e.target.value);
@@ -4419,6 +5621,7 @@ document.getElementById('heroTabBuiltin').onclick = () => {
   document.getElementById('heroUploadPanel').style.display = 'none';
   syncHeroUploadControls();
   render();
+  scheduleUploadSessionSave();
 };
 document.getElementById('heroTabUpload').onclick = () => {
   state.heroSourceMode = 'upload';
@@ -4428,6 +5631,7 @@ document.getElementById('heroTabUpload').onclick = () => {
   document.getElementById('heroUploadPanel').style.display = 'block';
   syncHeroUploadControls();
   if (state.heroCustomImage) render();
+  scheduleUploadSessionSave();
 };
 
 document.querySelectorAll('input[name="heroUploadMode"]').forEach(input => {
@@ -4438,8 +5642,10 @@ document.querySelectorAll('input[name="heroUploadMode"]').forEach(input => {
     if (state.heroCustomImage) {
       const modeText = state.heroUploadMode === 'tint' ? '跟随配色的透明 PNG' : '保留原色的透明 PNG';
       setUploadProcessingStatus('heroProcessingStatus', `当前显示${modeText}`);
+      saveFocusAsset('hero');
     }
     render();
+    scheduleUploadSessionSave();
   };
 });
 
@@ -4453,8 +5659,11 @@ async function handleHeroFile(file) {
   setUploadProcessingStatus('heroProcessingStatus',
     isVectorFile(file) ? '正在解析矢量文件…' : '正在生成透明 PNG…', 'processing');
   try {
-    const rasterFile = isVectorFile(file) ? await convertVectorToRasterFile(file, 1536) : file;
-    state.heroCustomImage = await convertUploadToTransparentPng(rasterFile, 1536, 'original');
+    const svgSource = await readSanitizedSvg(file);
+    const rasterFile = isVectorFile(file) ? await convertVectorToRasterFile(file, 3072) : file;
+    state.heroCustomImage = await convertUploadToTransparentPng(rasterFile, 3072, 'original');
+    state.heroSvgSource = svgSource;
+    state.heroAssetName = file.name;
     const img = new Image();
     await new Promise((resolve, reject) => {
       img.onload = resolve;
@@ -4470,6 +5679,8 @@ async function handleHeroFile(file) {
     document.getElementById('heroClearUpload').style.display = 'block';
     const modeText = state.heroUploadMode === 'tint' ? '跟随配色的透明 PNG' : '保留原色的透明 PNG';
     setUploadProcessingStatus('heroProcessingStatus', `已生成${modeText}`);
+    await saveFocusAsset('hero');
+    scheduleUploadSessionSave();
     render();
   } catch (error) {
     console.error(error);
@@ -4493,6 +5704,8 @@ heroUploadZone.ondrop = (e) => {
 document.getElementById('heroClearUpload').onclick = (e) => {
   e.stopPropagation();
   state.heroCustomImage = null;
+  state.heroSvgSource = null;
+  state.heroAssetName = '';
   state._heroImgEl = null;
   heroTintCache.clear();
   document.getElementById('heroUploadPlaceholder').style.display = 'block';
@@ -4500,6 +5713,7 @@ document.getElementById('heroClearUpload').onclick = (e) => {
   document.getElementById('heroClearUpload').style.display = 'none';
   setUploadProcessingStatus('heroProcessingStatus', '');
   render();
+  deletePersistentAsset('hero-current');
 };
 
 // ── 文字图层 ──
@@ -4509,6 +5723,7 @@ document.getElementById('textLayerSwitch').onclick = (e) => {
   document.getElementById('textLayerControls').style.display = state.textLayerEnabled ? 'block' : 'none';
   syncTextUploadControls();
   render();
+  scheduleUploadSessionSave();
 };
 document.querySelectorAll('input[name="textUploadMode"]').forEach(input => {
   input.onchange = () => {
@@ -4518,8 +5733,10 @@ document.querySelectorAll('input[name="textUploadMode"]').forEach(input => {
     if (state.textCustomImage) {
       const modeText = state.textUploadMode === 'tint' ? '跟随配色的透明 PNG' : '保留原色的透明 PNG';
       setUploadProcessingStatus('textProcessingStatus', `当前显示${modeText}`);
+      saveFocusAsset('text');
     }
     render();
+    scheduleUploadSessionSave();
   };
 });
 document.getElementById('textSizePct').oninput = (e) => {
@@ -4558,8 +5775,11 @@ async function handleTextFile(file) {
   setUploadProcessingStatus('textProcessingStatus',
     isVectorFile(file) ? '正在解析矢量文件…' : '正在生成文字透明 PNG…', 'processing');
   try {
-    const rasterFile = isVectorFile(file) ? await convertVectorToRasterFile(file, 1536) : file;
-    state.textCustomImage = await convertUploadToTransparentPng(rasterFile, 1536, 'original');
+    const svgSource = await readSanitizedSvg(file);
+    const rasterFile = isVectorFile(file) ? await convertVectorToRasterFile(file, 3072) : file;
+    state.textCustomImage = await convertUploadToTransparentPng(rasterFile, 3072, 'original');
+    state.textSvgSource = svgSource;
+    state.textAssetName = file.name;
     const img = new Image();
     await new Promise((resolve, reject) => {
       img.onload = resolve;
@@ -4575,6 +5795,8 @@ async function handleTextFile(file) {
     document.getElementById('textClearUpload').style.display = 'block';
     const modeText = state.textUploadMode === 'tint' ? '跟随配色的透明 PNG' : '保留原色的透明 PNG';
     setUploadProcessingStatus('textProcessingStatus', `已生成${modeText}`);
+    await saveFocusAsset('text');
+    scheduleUploadSessionSave();
     render();
   } catch (error) {
     console.error(error);
@@ -4598,6 +5820,8 @@ textUploadZone.ondrop = (e) => {
 document.getElementById('textClearUpload').onclick = (e) => {
   e.stopPropagation();
   state.textCustomImage = null;
+  state.textSvgSource = null;
+  state.textAssetName = '';
   state._textImgEl = null;
   textTintCache.clear();
   document.getElementById('textUploadPlaceholder').style.display = 'block';
@@ -4605,6 +5829,7 @@ document.getElementById('textClearUpload').onclick = (e) => {
   document.getElementById('textClearUpload').style.display = 'none';
   setUploadProcessingStatus('textProcessingStatus', '');
   render();
+  deletePersistentAsset('text-current');
 };
 
 // ── 自定义图标元素：上传按钮事件 ──
@@ -4622,6 +5847,8 @@ document.querySelectorAll('input[name="customColorMode"]').forEach(input => {
     customTintCache.clear();
     buildIconGrid();
     render();
+    state.customIcons.forEach(custom => saveCustomAsset(custom, custom.name));
+    scheduleUploadSessionSave();
   };
 });
 
@@ -4649,6 +5876,13 @@ document.querySelectorAll('#exportFormatRow .hero-tab').forEach(tab => {
   };
 });
 
+document.querySelectorAll('#pdfRenderModeRow .hero-tab').forEach(tab => {
+  tab.onclick = () => {
+    state.pdfRenderMode = tab.dataset.pdfMode;
+    updateExportUi();
+  };
+});
+
 // ── 导出 DPI 切换 ──
 document.querySelectorAll('#exportDpiRow .preset-btn').forEach(btn => {
   btn.onclick = () => {
@@ -4664,6 +5898,36 @@ document.getElementById('pdfSkipTextLayer').onchange = (e) => { state.pdfSkipTex
 document.getElementById('pdfSkipEmojiIcons').onchange = (e) => { state.pdfSkipEmojiIcons = e.target.checked; };
 document.getElementById('pdfSkipCustomIcons').onchange = (e) => { state.pdfSkipCustomIcons = e.target.checked; };
 document.getElementById('pdfSkipFilter').onchange = (e) => { state.pdfSkipFilter = e.target.checked; };
+
+document.getElementById('clearLocalAssetsBtn').onclick = async () => {
+  if (!confirm('确定要清空所有保存在此浏览器中的上传素材吗？此操作无法撤销。')) return;
+  try {
+    await clearAllPersistentAssets();
+    state.customIcons = [];
+    state.activeIcons = new Set([...state.activeIcons].filter(id => !String(id).startsWith('custom_')));
+    state.heroCustomImage = null;
+    state.heroSvgSource = null;
+    state.heroAssetName = '';
+    state._heroImgEl = null;
+    state.heroSourceMode = 'builtin';
+    state.textCustomImage = null;
+    state.textSvgSource = null;
+    state.textAssetName = '';
+    state._textImgEl = null;
+    state.textLayerEnabled = false;
+    customImgEls.clear();
+    customTintCache.clear();
+    heroTintCache.clear();
+    textTintCache.clear();
+    syncRestoredAssetUi();
+    buildIconGrid();
+    render();
+    await updateLocalAssetSummary();
+    setUploadProcessingStatus('localAssetStatus', '本地素材已清空。');
+  } catch (error) {
+    handlePersistenceError(error);
+  }
+};
 
 // ── 滤镜强度 ──
 document.getElementById('filterIntensity').oninput = (e) => {
@@ -4735,37 +5999,105 @@ document.querySelectorAll('.shape-opt').forEach(opt => {
   };
 });
 
-document.getElementById('exportBtn').onclick = () => {
-  if (state.exportFormat === 'pdf') {
-    exportPdfWithOptions();
-    return;
+document.getElementById('exportBtn').onclick = async () => {
+  const button = document.getElementById('exportBtn');
+  button.disabled = true;
+  const originalText = button.textContent;
+  button.textContent = '正在导出…';
+  try {
+    if (state.exportFormat === 'pdf') await exportPdfWithOptions();
+    else exportPngAtDpi(state.exportDpi);
+  } catch (error) {
+    console.error(error);
+    alert(`导出失败：${error.message || error}`);
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
   }
-  exportPngAtDpi(state.exportDpi);
 };
 
 // ═══════════════════════════════════════════════════════
 // 初始化
 // ═══════════════════════════════════════════════════════
 
-setupEventDelegation();
-buildPresetRow();
-buildIconGrid();
-buildSwatchRow();
-buildBgSwatchRow();
-buildSeamModeRow();
-buildLayoutModeRow();
-buildLayoutOffsetRow();
-buildHeroIconGrid();
-buildHeroColorRow();
-buildTextColorRow();
-syncTextUploadControls();
-buildCupOptionRow();
-buildLidColorRow();
-buildFilterGrid();
-syncSliderLabels();
-updateExportUi();
-updateZoomDisplay();
-render();
+function syncRestoredAssetUi() {
+  const heroSwitch = document.getElementById('heroSwitch');
+  if (heroSwitch) heroSwitch.classList.toggle('on', state.heroEnabled);
+  const heroControls = document.getElementById('heroControls');
+  if (heroControls) heroControls.style.display = state.heroEnabled ? 'block' : 'none';
+  const heroUploadPanel = document.getElementById('heroUploadPanel');
+  const heroBuiltinPanel = document.getElementById('heroBuiltinPanel');
+  const heroUploadTab = document.getElementById('heroTabUpload');
+  const heroBuiltinTab = document.getElementById('heroTabBuiltin');
+  const useHeroUpload = state.heroSourceMode === 'upload' && !!state.heroCustomImage;
+  if (heroUploadPanel) heroUploadPanel.style.display = useHeroUpload ? 'block' : 'none';
+  if (heroBuiltinPanel) heroBuiltinPanel.style.display = useHeroUpload ? 'none' : 'block';
+  heroUploadTab?.classList.toggle('active', useHeroUpload);
+  heroBuiltinTab?.classList.toggle('active', !useHeroUpload);
+  document.querySelectorAll('input[name="heroUploadMode"]').forEach(input => { input.checked = input.value === state.heroUploadMode; });
+  if (state.heroCustomImage) {
+    document.getElementById('heroUploadPlaceholder').style.display = 'none';
+    document.getElementById('heroUploadPreview').style.display = 'block';
+    document.getElementById('heroClearUpload').style.display = 'block';
+    updateHeroUploadPreview();
+  } else {
+    document.getElementById('heroUploadPlaceholder').style.display = 'block';
+    document.getElementById('heroUploadPreview').style.display = 'none';
+    document.getElementById('heroClearUpload').style.display = 'none';
+  }
+  syncHeroUploadControls();
+
+  const textSwitch = document.getElementById('textLayerSwitch');
+  if (textSwitch) textSwitch.classList.toggle('on', state.textLayerEnabled);
+  const textControls = document.getElementById('textLayerControls');
+  if (textControls) textControls.style.display = state.textLayerEnabled ? 'block' : 'none';
+  document.querySelectorAll('input[name="textUploadMode"]').forEach(input => { input.checked = input.value === state.textUploadMode; });
+  if (state.textCustomImage) {
+    document.getElementById('textUploadPlaceholder').style.display = 'none';
+    document.getElementById('textUploadPreview').style.display = 'block';
+    document.getElementById('textClearUpload').style.display = 'block';
+    updateTextUploadPreview();
+  } else {
+    document.getElementById('textUploadPlaceholder').style.display = 'block';
+    document.getElementById('textUploadPreview').style.display = 'none';
+    document.getElementById('textClearUpload').style.display = 'none';
+  }
+  syncTextUploadControls();
+}
+
+document.addEventListener('input', event => {
+  if (/^(hero|text)/.test(event.target.id || '')) scheduleUploadSessionSave();
+});
+document.addEventListener('change', event => {
+  if (/^(hero|text)/.test(event.target.id || '') || /^(heroUploadMode|textUploadMode)$/.test(event.target.name || '')) {
+    scheduleUploadSessionSave();
+  }
+});
+
+async function initializeApp() {
+  await restorePersistentUploads();
+  setupEventDelegation();
+  buildPresetRow();
+  buildIconGrid();
+  buildSwatchRow();
+  buildBgSwatchRow();
+  buildSeamModeRow();
+  buildLayoutModeRow();
+  buildLayoutOffsetRow();
+  buildHeroIconGrid();
+  buildHeroColorRow();
+  buildTextColorRow();
+  buildCupOptionRow();
+  buildLidColorRow();
+  buildFilterGrid();
+  syncRestoredAssetUi();
+  syncSliderLabels();
+  updateExportUi();
+  updateZoomDisplay();
+  render();
+}
+
+initializeApp();
 
 </script>
 </body>
