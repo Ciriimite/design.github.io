@@ -1,0 +1,1252 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>孟菲斯图案生成器 · 自定义尺寸保温杯印刷稿</title>
+<style>
+  :root{
+    --bg:#16161a;
+    --panel:#1f1f25;
+    --panel-2:#262630;
+    --ink:#f3f1ec;
+    --muted:#8e8c98;
+    --line:#34333d;
+    --accent:#FF6B35;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family: "Helvetica Neue", "PingFang SC", Arial, sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+    min-height:100vh;
+  }
+  .app{
+    display:flex;
+    min-height:100vh;
+  }
+  .panel{
+    width:320px;
+    flex-shrink:0;
+    background:var(--panel);
+    border-right:1px solid var(--line);
+    padding:20px 18px 90px;
+    overflow-y:auto;
+    max-height:100vh;
+  }
+  .panel h1{
+    font-size:16px;
+    margin:0 0 2px;
+    letter-spacing:.02em;
+  }
+  .panel .sub{
+    font-size:11.5px;
+    color:var(--muted);
+    margin:0 0 20px;
+    line-height:1.5;
+  }
+  .section{
+    margin-bottom:18px;
+    padding-bottom:16px;
+    border-bottom:1px solid var(--line);
+  }
+  .section:last-of-type{border-bottom:none;}
+  .section-title{
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.06em;
+    color:var(--muted);
+    margin-bottom:10px;
+  }
+  .row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:10px;
+    gap:10px;
+  }
+  .row label{
+    font-size:12.5px;
+    flex-shrink:0;
+    width:122px;
+  }
+  .row input[type=range]{
+    flex:1;
+    accent-color:var(--accent);
+  }
+  .row .val{
+    font-size:11.5px;
+    color:var(--muted);
+    width:46px;
+    text-align:right;
+    flex-shrink:0;
+  }
+  .row input[type=number]{
+    flex:1;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    color:var(--ink);
+    border-radius:4px;
+    padding:5px 8px;
+    font-size:12.5px;
+  }
+  .row.check label{width:auto;flex:1;}
+  .row.check input[type=radio]{accent-color:var(--accent);}
+  .color-grid{
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+  }
+  .color-item{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-size:12px;
+  }
+  .swatch{
+    width:16px;height:16px;border-radius:50%;
+    flex-shrink:0;
+    border:1px solid rgba(255,255,255,.25);
+  }
+  .color-item input{accent-color:var(--accent);}
+  .color-item .hex{color:var(--muted);font-size:10.5px;margin-left:auto;}
+  button{
+    cursor:pointer;
+    border:none;
+    border-radius:6px;
+    font-size:12.5px;
+    padding:10px 12px;
+    width:100%;
+    font-weight:600;
+    transition:opacity .15s, background .15s;
+  }
+  button:hover{opacity:.85;}
+  .btn-primary{
+    background:var(--accent);
+    color:#1b1208;
+    margin-bottom:14px;
+  }
+  .btn-secondary{
+    background:var(--panel-2);
+    color:var(--ink);
+    border:1px solid var(--line);
+    margin-bottom:8px;
+  }
+  .note{
+    font-size:10.5px;
+    color:var(--muted);
+    line-height:1.6;
+    margin-top:10px;
+  }
+  .note.warn{color:#e8b04b;}
+  .pantone-panel{ display:flex; flex-direction:column; gap:5px; max-height:180px; overflow-y:auto; }
+  .pantone-row{ display:flex; align-items:center; gap:6px; font-size:11px; }
+  .pantone-row .swatch{ width:14px;height:14px;border-radius:3px; }
+  .pantone-row .pcode{ font-weight:600; width:62px; flex-shrink:0; }
+  .pantone-row .phex{ color:var(--muted); width:58px; flex-shrink:0; }
+  .pantone-row .pde{ color:var(--muted); font-size:9.5px; }
+  .stage{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    padding:30px;
+    gap:12px;
+  }
+  .viewport{
+    width:100%;
+    max-width:1040px;
+    height:62vh;
+    overflow:auto;
+    border:1px solid var(--line);
+    border-radius:8px;
+    background:#101013;
+  }
+  .zoom-stage{
+    transform-origin: 0 0;
+    display:inline-block;
+    padding:28px;
+  }
+  .canvas-wrap{
+    width:900px;
+    box-shadow:0 20px 60px rgba(0,0,0,.5);
+    background-image:
+      linear-gradient(45deg, #3a3a42 25%, transparent 25%),
+      linear-gradient(-45deg, #3a3a42 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #3a3a42 75%),
+      linear-gradient(-45deg, transparent 75%, #3a3a42 75%);
+    background-size:18px 18px;
+    background-position:0 0, 0 9px, 9px -9px, -9px 0px;
+    background-color:#2a2a30;
+  }
+  svg#canvas{
+    width:100%;
+    height:auto;
+    display:block;
+  }
+  .toolbar-bottom{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:6px;
+  }
+  .dims-label{
+    font-size:12px;
+    color:var(--muted);
+    letter-spacing:.03em;
+  }
+  .zoom-bar{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    flex-wrap:wrap;
+    justify-content:center;
+  }
+  .zoom-bar button{
+    width:30px;
+    height:30px;
+    padding:0;
+    background:var(--panel-2);
+    color:var(--ink);
+    border:1px solid var(--line);
+    font-size:14px;
+  }
+  .zoom-bar .reset-btn{ width:auto; padding:0 10px; font-size:11.5px; }
+  .zoom-bar .reset-btn.active{ background:var(--accent); color:#1b1208; }
+  .zoom-bar .zoom-label{
+    font-size:12px;
+    color:var(--muted);
+    width:46px;
+    text-align:center;
+  }
+  .zoom-hint{
+    font-size:10.5px;
+    color:var(--muted);
+  }
+  .placed-info{
+    font-size:11px;
+    color:var(--muted);
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <aside class="panel">
+    <h1>孟菲斯图案生成器</h1>
+    <p class="sub">自定义尺寸保温杯UV印刷稿 · 矢量输出</p>
+
+    <div class="section">
+      <div class="section-title">画布尺寸（自定义）</div>
+      <div class="row">
+        <label for="widthCm">宽度 (cm)</label>
+        <input type="number" id="widthCm" value="26" min="1" step="0.1">
+      </div>
+      <div class="row">
+        <label for="heightCm">高度 (cm)</label>
+        <input type="number" id="heightCm" value="14.8" min="1" step="0.1">
+      </div>
+      <p class="note">单位为厘米，内部按毫米精确换算到矢量坐标，可输入任意宽高，不依赖预设杯型列表。</p>
+    </div>
+
+    <div class="section">
+      <div class="section-title">接缝处理（环绕印刷）</div>
+      <div class="row check"><label>无缝镶嵌（wrap）</label><input type="radio" name="seamMode" value="wrap"></div>
+      <div class="row check"><label>边缘留白（margin）</label><input type="radio" name="seamMode" value="margin" checked></div>
+      <div class="row check"><label>不处理（none）</label><input type="radio" name="seamMode" value="none"></div>
+      <div class="row" id="safeMarginRow">
+        <label for="safeMargin">安全边距(mm)</label>
+        <input type="range" id="safeMargin" min="2" max="25" step="0.5" value="8">
+        <span class="val" id="safeMarginVal">8</span>
+      </div>
+      <p class="note">
+        无缝镶嵌：贴边元素会在画布对侧自动镶嵌镜像副本，保证转一圈拼接时不断裂错位，需保持下面"允许出血"勾选才会生效。<br><br>
+        边缘留白：左右两侧各留一段纯色安全边距，所有元素都不会进入该区域，接缝处最干净，工厂对版也更简单，预览时会画红色虚线标出安全边距位置。<br><br>
+        不处理：完全随机生成，不做任何接缝保护，仅作为前两种模式的效果对比参照，不建议作为最终交付方案。
+      </p>
+    </div>
+
+    <div class="section">
+      <div class="section-title">主形状（弧形 / 环形）</div>
+      <div class="row">
+        <label for="shapeCount">目标数量</label>
+        <input type="range" id="shapeCount" min="10" max="90" value="38">
+        <span class="val" id="shapeCountVal">38</span>
+      </div>
+      <div class="row">
+        <label for="ringRatio">环形比例</label>
+        <input type="range" id="ringRatio" min="0" max="100" value="40">
+        <span class="val" id="ringRatioVal">40%</span>
+      </div>
+      <div class="row">
+        <label for="sizeMin">最小尺寸(mm)</label>
+        <input type="range" id="sizeMin" min="4" max="30" value="10">
+        <span class="val" id="sizeMinVal">10</span>
+      </div>
+      <div class="row">
+        <label for="sizeMax">最大尺寸(mm)</label>
+        <input type="range" id="sizeMax" min="15" max="60" value="32">
+        <span class="val" id="sizeMaxVal">32</span>
+      </div>
+      <div class="row">
+        <label for="strokeWidth">线宽(mm)</label>
+        <input type="range" id="strokeWidth" min="1.5" max="6" step="0.1" value="3.2">
+        <span class="val" id="strokeWidthVal">3.2</span>
+      </div>
+      <div class="row">
+        <label for="minGap">元素间距(mm)</label>
+        <input type="range" id="minGap" min="0" max="14" step="0.5" value="4">
+        <span class="val" id="minGapVal">4</span>
+      </div>
+      <div class="row check">
+        <label for="bleed">允许图形出血到边缘外</label>
+        <input type="checkbox" id="bleed" checked>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">点缀元素（圆点 / 短线）</div>
+      <div class="row">
+        <label for="dotCount">圆点目标数量</label>
+        <input type="range" id="dotCount" min="0" max="60" value="18">
+        <span class="val" id="dotCountVal">18</span>
+      </div>
+      <div class="row">
+        <label for="dotSize">圆点大小(mm)</label>
+        <input type="range" id="dotSize" min="1" max="8" step="0.5" value="4">
+        <span class="val" id="dotSizeVal">4</span>
+      </div>
+      <div class="row">
+        <label for="dashCount">短线组目标数量</label>
+        <input type="range" id="dashCount" min="0" max="40" value="12">
+        <span class="val" id="dashCountVal">12</span>
+      </div>
+      <div class="row">
+        <label for="dashLength">短线长度(mm)</label>
+        <input type="range" id="dashLength" min="3" max="14" value="6">
+        <span class="val" id="dashLengthVal">6</span>
+      </div>
+      <p class="note">圆点可以掉进弧形/环形中间的空心里（每个主形状最多嵌2个圆点），短线组和主形状之间始终保持不重叠、不嵌套。数量是"目标值"，实际放置数量见画布下方统计。</p>
+    </div>
+
+    <div class="section">
+      <div class="section-title">水彩质感</div>
+      <div class="row check">
+        <label for="gradientStroke">渐变描边（双色融合，矢量安全）</label>
+        <input type="checkbox" id="gradientStroke" checked>
+      </div>
+      <div class="row check">
+        <label for="opacityVariation">透明度随机变化（叠色更丰富）</label>
+        <input type="checkbox" id="opacityVariation" checked>
+      </div>
+      <div class="row check">
+        <label for="wobble">手绘边缘扰动（仅预览用）</label>
+        <input type="checkbox" id="wobble">
+      </div>
+      <div class="row">
+        <label for="wobbleStrength">扰动强度</label>
+        <input type="range" id="wobbleStrength" min="1" max="6" value="3">
+        <span class="val" id="wobbleStrengthVal">3</span>
+      </div>
+      <p class="note warn">开启"手绘边缘扰动"后，导出的SVG/PDF会在该效果处转为像素渲染。正式印刷文件建议关闭，只用渐变描边+透明度变化即可还原水彩层次感，且保持100%矢量。</p>
+    </div>
+
+    <div class="section">
+      <div class="section-title">背景</div>
+      <div class="row">
+        <label for="bgOpacity">白底透明度</label>
+        <input type="range" id="bgOpacity" min="0" max="100" value="100">
+        <span class="val" id="bgOpacityVal">100%</span>
+      </div>
+      <div class="row check">
+        <label for="transparentBg">完全透明（无白底，露出杯身磨砂面）</label>
+        <input type="checkbox" id="transparentBg">
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">颜色</div>
+      <div class="color-grid" id="colorGrid"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">色号速查（实时 · LAB ΔE76 近似匹配）</div>
+      <div class="pantone-panel" id="pantonePanel"></div>
+      <p class="note">内置约280个常用Pantone Coated近似色号（开源社区对照表节选 + 常用黑白灰阶/四色基色），非官方完整色库，仅供工厂对版参考，最终请以工厂实体色卡为准。</p>
+    </div>
+
+    <div class="section">
+      <div class="section-title">随机种子</div>
+      <div class="row">
+        <label for="seed">Seed</label>
+        <input type="number" id="seed" value="1234">
+      </div>
+    </div>
+
+    <button class="btn-primary" id="regenBtn">🎲 重新生成布局</button>
+    <button class="btn-secondary" id="downloadSvgBtn">⬇️ 下载SVG矢量文件</button>
+    <button class="btn-secondary" id="exportPdfBtn">⬇️ 下载矢量PDF（含色号页）</button>
+    <button class="btn-secondary" id="downloadPngBtn">🖼️ 下载PNG（含色号说明，600dpi）</button>
+
+    <p class="note">
+      矢量PDF由工具直接生成（jsPDF + svg2pdf.js），不走浏览器打印。第一页是真矢量设计稿（按真实尺寸），第二页是色号说明栏（含设计尺寸标注，因含中文文字暂为高分辨率栅格图，不影响阅读）。需要联网加载一次转换库，生成完成会直接下载文件。
+    </p>
+  </aside>
+
+  <main class="stage">
+    <div class="viewport" id="viewport">
+      <div class="zoom-stage" id="zoomStage">
+        <div class="canvas-wrap">
+          <svg id="canvas" viewBox="0 0 260 148" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <filter id="wobbleFilter" x="-30%" y="-30%" width="160%" height="160%">
+                <feTurbulence type="fractalNoise" baseFrequency="0.25" numOctaves="2" seed="7" result="noise"/>
+                <feDisplacementMap id="wobbleDisp" in="SourceGraphic" in2="noise" scale="3" xChannelSelector="R" yChannelSelector="G"/>
+              </filter>
+              <g id="gradDefs"></g>
+            </defs>
+            <rect id="bgRect" x="0" y="0" width="260" height="148" fill="#ffffff"/>
+            <g id="artLayer">
+              <g id="shapesLayer"></g>
+              <g id="dotsLayer"></g>
+              <g id="dashesLayer"></g>
+            </g>
+            <g id="guideLayer"></g>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <div class="toolbar-bottom">
+      <div class="dims-label" id="dimsLabel">260.0 × 148.0 mm · 实际印刷尺寸</div>
+      <div class="zoom-bar">
+        <button id="zoomOutBtn">－</button>
+        <span class="zoom-label" id="zoomLabel">100%</span>
+        <button id="zoomInBtn">＋</button>
+        <button class="reset-btn" id="zoomResetBtn">适应窗口</button>
+        <button class="reset-btn" id="seamCheckBtn">🧵 接缝检查</button>
+      </div>
+      <div class="zoom-hint">按住 Ctrl / Cmd + 滚轮缩放，直接滚动可平移查看细节</div>
+      <div class="placed-info" id="placedInfo"></div>
+    </div>
+  </main>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/svg2pdf.js@2/dist/svg2pdf.umd.min.js" crossorigin="anonymous"></script>
+
+<script>
+  const NS = 'http://www.w3.org/2000/svg';
+  const COLORS = [
+    { name: "热粉红",   hex: "#E91E8C" },
+    { name: "青蓝",     hex: "#00BCD4" },
+    { name: "珊瑚橙",   hex: "#FF6B35" },
+    { name: "电光紫",   hex: "#8B5CF6" },
+    { name: "亮黄",     hex: "#FFB800" },
+    { name: "钴蓝",     hex: "#3B82F6" },
+    { name: "翠绿",     hex: "#10B981" }
+  ];
+
+  const colorGrid = document.getElementById('colorGrid');
+  COLORS.forEach((c, i) => {
+    const div = document.createElement('div');
+    div.className = 'color-item';
+    div.innerHTML = `
+      <input type="checkbox" id="col${i}" checked>
+      <span class="swatch" style="background:${c.hex}"></span>
+      <span>${c.name}</span>
+      <span class="hex">${c.hex}</span>
+    `;
+    colorGrid.appendChild(div);
+  });
+
+  // ===================== Pantone reference table =====================
+  // Spectrum 100C-357C sourced from the open-source "Pantone-Sass" project
+  // (damonbauer/Pantone-Sass, community-maintained Coated approximation map).
+  // Named brights / blacks / whites / grays / process colors below are
+  // commonly published approximations added for factory-reference coverage.
+  // This is NOT the official Pantone library — approximate match only.
+  const PANTONE_TABLE = [
+    ["100 C","#F6EB61"],["101 C","#F7EA48"],["102 C","#FCE300"],["103 C","#C5A900"],["104 C","#AF9800"],["105 C","#897A27"],
+    ["106 C","#F9E547"],["107 C","#FBE122"],["108 C","#FEDB00"],["109 C","#FFD100"],["110 C","#DAAA00"],["111 C","#AA8A00"],["112 C","#9C8412"],
+    ["113 C","#FAE053"],["114 C","#FBDD40"],["115 C","#FDDA24"],["116 C","#FFCD00"],["117 C","#C99700"],["118 C","#AC8400"],["119 C","#897322"],
+    ["120 C","#FBDB65"],["121 C","#FDD757"],["122 C","#FED141"],["123 C","#FFC72C"],["124 C","#EAAA00"],["125 C","#B58500"],["126 C","#9A7611"],
+    ["127 C","#F3DD6D"],["128 C","#F3D54E"],["129 C","#F3D03E"],["130 C","#F2A900"],["131 C","#CC8A00"],["132 C","#A07400"],["133 C","#6C571B"],
+    ["134 C","#FDD26E"],["135 C","#FFC658"],["136 C","#FFBF3F"],["137 C","#FFA300"],["138 C","#DE7C00"],["139 C","#AF6D04"],["140 C","#74531C"],
+    ["141 C","#F2C75C"],["142 C","#F1BE48"],["143 C","#F1B434"],["144 C","#ED8B00"],["145 C","#CF7F00"],["146 C","#A76D11"],["147 C","#715C2A"],
+    ["148 C","#FECB8B"],["149 C","#FFC27B"],["150 C","#FFB25B"],["151 C","#FF8200"],["152 C","#E57200"],["153 C","#BE6A14"],["154 C","#9B5A1A"],
+    ["155 C","#EFD19F"],["156 C","#EFBE7D"],["157 C","#ECA154"],["158 C","#E87722"],["159 C","#CB6015"],["160 C","#A1561C"],["161 C","#603D20"],
+    ["162 C","#FFBE9F"],["163 C","#FF9D6E"],["164 C","#FF7F41"],["165 C","#FF671F"],["166 C","#E35205"],["167 C","#BE531C"],["168 C","#73381D"],
+    ["169 C","#FFB3AB"],["170 C","#FF8674"],["171 C","#FF5C39"],["172 C","#FA4616"],["173 C","#CF4520"],["174 C","#963821"],["175 C","#6B3529"],
+    ["176 C","#FFB1BB"],["177 C","#FF808B"],["178 C","#FF585D"],["179 C","#E03C31"],["180 C","#BE3A34"],["181 C","#81312F"],
+    ["182 C","#FABBCB"],["183 C","#FC9BB3"],["184 C","#F65275"],["185 C","#E4002B"],["186 C","#C8102E"],["187 C","#A6192E"],["188 C","#76232F"],
+    ["189 C","#F8A3BC"],["190 C","#F67599"],["191 C","#EF426F"],["192 C","#E40046"],["193 C","#BF0D3E"],["194 C","#9B2743"],["195 C","#782F40"],
+    ["196 C","#ECC7CD"],["197 C","#E89CAE"],["198 C","#DF4661"],["199 C","#D50032"],["200 C","#BA0C2F"],["201 C","#9D2235"],["202 C","#862633"],
+    ["203 C","#ECB3CB"],["204 C","#E782A9"],["205 C","#E0457B"],["206 C","#CE0037"],["207 C","#A50034"],["208 C","#861F41"],["209 C","#6F263D"],
+    ["210 C","#F99FC9"],["211 C","#F57EB6"],["212 C","#F04E98"],["213 C","#E31C79"],["214 C","#CE0F69"],["215 C","#AC145A"],["216 C","#7D2248"],
+    ["217 C","#EABEDB"],["218 C","#E56DB1"],["219 C","#DA1884"],["220 C","#A50050"],["221 C","#910048"],["222 C","#6C1D45"],
+    ["223 C","#EF95CF"],["224 C","#EB6FBD"],["225 C","#DF1995"],["226 C","#D0006F"],["227 C","#AA0061"],["228 C","#890C58"],["229 C","#672146"],
+    ["230 C","#F4A6D7"],["231 C","#F277C6"],["232 C","#E93CAC"],["233 C","#C6007E"],["234 C","#A20067"],["235 C","#840B55"],
+    ["236 C","#F1A7DC"],["237 C","#EC86D0"],["238 C","#E45DBF"],["239 C","#DB3EB1"],["240 C","#C5299B"],["241 C","#AF1685"],["242 C","#80225F"],
+    ["243 C","#EAB8E4"],["244 C","#E59BDC"],["245 C","#DD7FD3"],["246 C","#C724B1"],["247 C","#BB16A3"],["248 C","#A51890"],["249 C","#80276C"],
+    ["250 C","#E7BAE4"],["251 C","#DD9CDF"],["252 C","#C964CF"],["253 C","#AD1AAC"],["254 C","#981D97"],["255 C","#72246C"],
+    ["256 C","#D6BFDD"],["257 C","#C6A1CF"],["258 C","#8C4799"],["259 C","#6D2077"],["260 C","#642667"],["261 C","#5D285F"],["262 C","#51284F"],
+    ["263 C","#D7C6E6"],["264 C","#C1A7E2"],["265 C","#9063CD"],["266 C","#753BBD"],["267 C","#5F259F"],["268 C","#582C83"],["269 C","#512D6D"],
+    ["270 C","#B4B5DF"],["271 C","#9595D2"],["272 C","#7474C1"],["273 C","#24135F"],["274 C","#211551"],["275 C","#201747"],["276 C","#221C35"],
+    ["277 C","#ABCAE9"],["278 C","#8BB8E8"],["279 C","#418FDE"],["280 C","#012169"],["281 C","#00205B"],["282 C","#041E42"],
+    ["283 C","#92C1E9"],["284 C","#6CACE4"],["285 C","#0072CE"],["286 C","#0033A0"],["287 C","#003087"],["288 C","#002D72"],["289 C","#0C2340"],
+    ["290 C","#B9D9EB"],["291 C","#9BCBEB"],["292 C","#69B3E7"],["293 C","#003DA5"],["294 C","#002F6C"],["295 C","#002855"],["296 C","#041C2C"],
+    ["297 C","#71C5E8"],["298 C","#41B6E6"],["299 C","#00A3E0"],["300 C","#005EB8"],["301 C","#004B87"],["302 C","#003B5C"],["303 C","#002A3A"],
+    ["304 C","#9ADBE8"],["305 C","#59CBE8"],["306 C","#00B5E2"],["307 C","#006BA6"],["308 C","#00587C"],["309 C","#003B49"],
+    ["310 C","#6AD1E3"],["311 C","#05C3DE"],["312 C","#00A9CE"],["313 C","#0092BC"],["314 C","#007FA3"],["315 C","#00677F"],["316 C","#004851"],
+    ["317 C","#B1E4E3"],["318 C","#88DBDF"],["319 C","#2DCCD3"],["320 C","#009CA6"],["321 C","#008C95"],["322 C","#007377"],["323 C","#005F61"],
+    ["324 C","#9CDBD9"],["325 C","#64CCC9"],["326 C","#00B2A9"],["327 C","#008675"],["328 C","#007367"],["329 C","#00685E"],["330 C","#00534C"],
+    ["331 C","#A7E6D7"],["332 C","#8CE2D0"],["333 C","#3CDBC0"],["334 C","#009775"],["335 C","#007B5F"],["336 C","#00664F"],
+    ["337 C","#8FD6BD"],["338 C","#6ECEB2"],["339 C","#00B388"],["340 C","#00965E"],["341 C","#007A53"],["342 C","#006747"],["343 C","#115740"],
+    ["344 C","#A0DAB3"],["345 C","#91D6AC"],["346 C","#71CC98"],["347 C","#009A44"],["348 C","#00843D"],["349 C","#046A38"],["350 C","#2C5234"],
+    ["351 C","#A2E4B8"],["352 C","#8FE2B0"],["353 C","#80E0A7"],["354 C","#00B140"],["355 C","#009639"],["356 C","#007A33"],["357 C","#215732"],
+    ["Yellow C","#FEDD00"],["Orange 021 C","#FE5000"],["Warm Red C","#F9423A"],["Red 032 C","#EF3340"],
+    ["Rubine Red C","#CE0058"],["Rhodamine Red C","#E10098"],["Purple C","#BB29BB"],["Violet C","#440099"],
+    ["Blue 072 C","#10069F"],["Reflex Blue C","#001489"],["Process Blue C","#0085CA"],["Green C","#00AB84"],["Black C","#2D2926"],
+    ["White (近似)","#FFFFFF"],["Process Cyan C","#00AEEF"],["Process Magenta C","#EC008C"],["Process Yellow C","#FFF200"],
+    ["Cool Gray 1 C","#D9D9D6"],["Cool Gray 3 C","#C8C9C7"],["Cool Gray 5 C","#B1B3B3"],
+    ["Cool Gray 7 C","#97999B"],["Cool Gray 9 C","#75787B"],["Cool Gray 11 C","#53565A"],
+    ["Warm Gray 1 C","#D7D2CB"],["Warm Gray 5 C","#B5A99A"],["Warm Gray 9 C","#8A8378"],["Warm Gray 11 C","#6F6259"]
+  ];
+
+  function hexToRgb(hex) {
+    hex = hex.replace('#', '');
+    if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+    const num = parseInt(hex, 16);
+    return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+  }
+  function rgbToLab(rgb) {
+    let r = rgb.r / 255, g = rgb.g / 255, b = rgb.b / 255;
+    [r, g, b] = [r, g, b].map(v => v > 0.04045 ? Math.pow((v + 0.055) / 1.055, 2.4) : v / 12.92);
+    r *= 100; g *= 100; b *= 100;
+    const X = r * 0.4124 + g * 0.3576 + b * 0.1805;
+    const Y = r * 0.2126 + g * 0.7152 + b * 0.0722;
+    const Z = r * 0.0193 + g * 0.1192 + b * 0.9505;
+    let x = X / 95.047, y = Y / 100.0, z = Z / 108.883;
+    [x, y, z] = [x, y, z].map(v => v > 0.008856 ? Math.pow(v, 1 / 3) : (7.787 * v) + 16 / 116);
+    return { L: (116 * y) - 16, a: 500 * (x - y), b: 200 * (y - z) };
+  }
+  function deltaE76(l1, l2) {
+    return Math.sqrt(Math.pow(l1.L - l2.L, 2) + Math.pow(l1.a - l2.a, 2) + Math.pow(l1.b - l2.b, 2));
+  }
+  const PANTONE_LAB = PANTONE_TABLE.map(([code, hex]) => ({ code, hex, lab: rgbToLab(hexToRgb(hex)) }));
+  function nearestPantone(hex) {
+    const lab = rgbToLab(hexToRgb(hex));
+    let best = null, bestD = Infinity;
+    for (const p of PANTONE_LAB) {
+      const d = deltaE76(lab, p.lab);
+      if (d < bestD) { bestD = d; best = p; }
+    }
+    return { code: best.code, hex: best.hex, deltaE: bestD };
+  }
+
+  // ===================== seeded RNG =====================
+  function mulberry32(seed) {
+    return function() {
+      seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function rand(rng, min, max) { return min + (max - min) * rng(); }
+
+  function polarToCartesian(cx, cy, r, angleDeg) {
+    const a = (angleDeg - 90) * Math.PI / 180;
+    return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
+  }
+  function describeArc(cx, cy, r, startAngle, endAngle) {
+    const start = polarToCartesian(cx, cy, r, endAngle);
+    const end = polarToCartesian(cx, cy, r, startAngle);
+    const span = endAngle - startAngle;
+    const largeArc = span <= 180 ? "0" : "1";
+    return ["M", start.x.toFixed(2), start.y.toFixed(2),
+            "A", r.toFixed(2), r.toFixed(2), 0, largeArc, 0,
+            end.x.toFixed(2), end.y.toFixed(2)].join(" ");
+  }
+
+  function buildColorAssignment(count, colors, rng) {
+    let arr = [];
+    while (arr.length < count) arr = arr.concat(colors);
+    arr = arr.slice(0, count);
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+  function pickPartnerColor(baseHex, palette, rng) {
+    if (palette.length <= 1) return baseHex;
+    let other = baseHex, tries = 0;
+    while (other === baseHex && tries < 6) {
+      other = palette[Math.floor(rng() * palette.length)];
+      tries++;
+    }
+    return other;
+  }
+
+  let W = 260, H = 148;
+  let seamMode = 'margin';
+  let seamCheckOn = false;
+
+  const shapesLayer = document.getElementById('shapesLayer');
+  const dotsLayer = document.getElementById('dotsLayer');
+  const dashesLayer = document.getElementById('dashesLayer');
+  const bgRect = document.getElementById('bgRect');
+  const gradDefs = document.getElementById('gradDefs');
+  const placedInfo = document.getElementById('placedInfo');
+
+  function $(id) { return document.getElementById(id); }
+
+  function readCanvasSizeMm() {
+    const wCm = parseFloat($('widthCm').value) || 26;
+    const hCm = parseFloat($('heightCm').value) || 14.8;
+    W = Math.max(10, wCm * 10);
+    H = Math.max(10, hCm * 10);
+  }
+
+  function addGradient(id, x1, y1, x2, y2, colorA, colorB) {
+    const grad = document.createElementNS(NS, 'linearGradient');
+    grad.setAttribute('id', id);
+    grad.setAttribute('gradientUnits', 'userSpaceOnUse');
+    grad.setAttribute('x1', x1); grad.setAttribute('y1', y1);
+    grad.setAttribute('x2', x2); grad.setAttribute('y2', y2);
+    const s1 = document.createElementNS(NS, 'stop');
+    s1.setAttribute('offset', '0%'); s1.setAttribute('stop-color', colorA);
+    const s2 = document.createElementNS(NS, 'stop');
+    s2.setAttribute('offset', '100%'); s2.setAttribute('stop-color', colorB);
+    grad.appendChild(s1); grad.appendChild(s2);
+    gradDefs.appendChild(grad);
+  }
+
+  function applyWobble() {
+    const on = $('wobble').checked;
+    const strength = $('wobbleStrength').value;
+    document.getElementById('wobbleDisp').setAttribute('scale', strength);
+    const artLayer = document.getElementById('artLayer');
+    if (on) artLayer.setAttribute('filter', 'url(#wobbleFilter)');
+    else artLayer.removeAttribute('filter');
+  }
+
+  // ===================== collision-aware placement =====================
+  function tryPlaceSolid(rng, candR, minGap, xMin, xMax, yMin, yMax, placed, maxAttempts, wrapX) {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const cx = rand(rng, xMin, xMax);
+      const cy = rand(rng, yMin, yMax);
+      let ok = true;
+      for (let k = 0; k < placed.length; k++) {
+        const p = placed[k];
+        let dx = cx - p.x;
+        if (wrapX) { if (dx > W / 2) dx -= W; else if (dx < -W / 2) dx += W; }
+        const dy = cy - p.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if ((dist - candR - minGap) < p.outerR) { ok = false; break; }
+      }
+      if (ok) return { x: cx, y: cy };
+    }
+    return null;
+  }
+  function tryPlaceDot(rng, candR, minGap, xMin, xMax, yMin, yMax, placed, maxAttempts, wrapX) {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const cx = rand(rng, xMin, xMax);
+      const cy = rand(rng, yMin, yMax);
+      let ok = true;
+      let nestedIn = null;
+      for (let k = 0; k < placed.length; k++) {
+        const p = placed[k];
+        let dx = cx - p.x;
+        if (wrapX) { if (dx > W / 2) dx -= W; else if (dx < -W / 2) dx += W; }
+        const dy = cy - p.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const outsideRing = (dist - candR - minGap) >= p.outerR;
+        if (p.type === 'main' && p.nestedDots < 2) {
+          const insideHole = (dist + candR + minGap) <= p.innerR;
+          if (!(insideHole || outsideRing)) { ok = false; break; }
+          if (insideHole) nestedIn = p;
+        } else {
+          if (!outsideRing) { ok = false; break; }
+        }
+      }
+      if (ok) return { x: cx, y: cy, nestedIn: nestedIn };
+    }
+    return null;
+  }
+
+  // ===================== drawing helpers (support wrap clones) =====================
+  function drawMainShape(idx, suffix, cx, cy, r, sw, isRing, color, partner, gradientOn, gradAngleRad, startAngle, endAngle, opacityVal) {
+    let strokeValue = color;
+    if (gradientOn) {
+      const x1 = cx - r * Math.cos(gradAngleRad), y1 = cy - r * Math.sin(gradAngleRad);
+      const x2 = cx + r * Math.cos(gradAngleRad), y2 = cy + r * Math.sin(gradAngleRad);
+      const gid = 'grad' + idx + suffix;
+      addGradient(gid, x1.toFixed(2), y1.toFixed(2), x2.toFixed(2), y2.toFixed(2), color, partner);
+      strokeValue = 'url(#' + gid + ')';
+    }
+    if (isRing) {
+      const c = document.createElementNS(NS, 'circle');
+      c.setAttribute('cx', cx.toFixed(2));
+      c.setAttribute('cy', cy.toFixed(2));
+      c.setAttribute('r', r.toFixed(2));
+      c.setAttribute('fill', 'none');
+      c.setAttribute('stroke', strokeValue);
+      c.setAttribute('stroke-width', sw);
+      if (opacityVal !== null) c.setAttribute('opacity', opacityVal);
+      shapesLayer.appendChild(c);
+    } else {
+      const d = describeArc(cx, cy, r, startAngle, endAngle);
+      const p = document.createElementNS(NS, 'path');
+      p.setAttribute('d', d);
+      p.setAttribute('fill', 'none');
+      p.setAttribute('stroke', strokeValue);
+      p.setAttribute('stroke-width', sw);
+      p.setAttribute('stroke-linecap', 'round');
+      if (opacityVal !== null) p.setAttribute('opacity', opacityVal);
+      shapesLayer.appendChild(p);
+    }
+  }
+  function drawDot(cx, cy, r, color, opacityVal) {
+    const c = document.createElementNS(NS, 'circle');
+    c.setAttribute('cx', cx.toFixed(2));
+    c.setAttribute('cy', cy.toFixed(2));
+    c.setAttribute('r', r.toFixed(2));
+    c.setAttribute('fill', color);
+    if (opacityVal !== null) c.setAttribute('opacity', opacityVal);
+    dotsLayer.appendChild(c);
+  }
+  function drawDashGroup(cx, cy, dx, dy, px, py, linesInGroup, color, lineWidth, groupOpacity, dashLength) {
+    for (let j = 0; j < linesInGroup; j++) {
+      const offset = (j - (linesInGroup - 1) / 2) * (lineWidth * 2.4);
+      const ox = cx + px * offset, oy = cy + py * offset;
+      const x1 = ox - dx * dashLength / 2, y1 = oy - dy * dashLength / 2;
+      const x2 = ox + dx * dashLength / 2, y2 = oy + dy * dashLength / 2;
+      const line = document.createElementNS(NS, 'line');
+      line.setAttribute('x1', x1.toFixed(2));
+      line.setAttribute('y1', y1.toFixed(2));
+      line.setAttribute('x2', x2.toFixed(2));
+      line.setAttribute('y2', y2.toFixed(2));
+      line.setAttribute('stroke', color);
+      line.setAttribute('stroke-width', lineWidth.toFixed(2));
+      line.setAttribute('stroke-linecap', 'round');
+      line.setAttribute('opacity', groupOpacity.toFixed(2));
+      dashesLayer.appendChild(line);
+    }
+  }
+
+  // ===================== Pantone helpers =====================
+  function getUsedColors() {
+    let cols = COLORS.filter((c, i) => $('col' + i).checked).map(c => c.hex);
+    if (cols.length === 0) cols = COLORS.map(c => c.hex);
+    const transparent = $('transparentBg').checked;
+    const bgOpacity = parseInt($('bgOpacity').value, 10);
+    if (!transparent && bgOpacity > 0) cols = cols.concat(['#FFFFFF']);
+    return [...new Set(cols.map(c => c.toUpperCase()))];
+  }
+  function buildPantoneMatches() {
+    return getUsedColors().map(hex => ({ hex, match: nearestPantone(hex) }));
+  }
+  function renderPantonePanel() {
+    const matches = buildPantoneMatches();
+    const box = $('pantonePanel');
+    box.innerHTML = '';
+    matches.forEach(m => {
+      const row = document.createElement('div');
+      row.className = 'pantone-row';
+      row.innerHTML = '<span class="swatch" style="background:' + m.hex + '"></span>' +
+        '<span class="pcode">' + m.match.code + '</span>' +
+        '<span class="phex">' + m.hex + '</span>' +
+        '<span class="pde">\u0394E ' + m.match.deltaE.toFixed(1) + '</span>';
+      box.appendChild(row);
+    });
+  }
+  function computeLegendHeightMm(count) {
+    const itemPitch = 66;
+    const cols = Math.max(1, Math.floor((W - 16) / itemPitch));
+    const rows = Math.ceil(count / cols);
+    const header = 8 + 8 + 7;
+    const gridH = rows * 16;
+    const footer = 14 + 10;
+    return Math.max(45, header + gridH + footer);
+  }
+  function wrapCanvasText(ctx, text, x, y, maxWidth, lineHeight) {
+    let line = '', cy = y;
+    for (const ch of text) {
+      const test = line + ch;
+      if (ctx.measureText(test).width > maxWidth && line.length > 0) {
+        ctx.fillText(line, x, cy);
+        line = ch;
+        cy += lineHeight;
+      } else {
+        line = test;
+      }
+    }
+    if (line) ctx.fillText(line, x, cy);
+  }
+  function drawPngLegend(ctx, matches, x, y, w, h, dpi) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = '#dddddd';
+    ctx.fillRect(0, 0, w, Math.max(1, dpi / 150));
+
+    const pxPerMm = dpi / 25.4;
+    const pad = 8 * pxPerMm;
+    const titlePx = 13 * dpi / 72;
+    const textPx = 9 * dpi / 72;
+    const smallPx = 8 * dpi / 72;
+
+    let cy = pad + titlePx;
+    ctx.fillStyle = '#111111';
+    ctx.font = '700 ' + titlePx + 'px Arial, "PingFang SC", sans-serif';
+    ctx.fillText('配色方案 · Pantone 色号参考（近似匹配）', pad, cy);
+
+    cy += textPx * 1.8;
+    ctx.font = textPx + 'px Arial, sans-serif';
+    ctx.fillStyle = '#444444';
+    ctx.fillText('设计尺寸：' + W.toFixed(1) + ' × ' + H.toFixed(1) + ' mm', pad, cy);
+
+    cy += textPx * 2;
+    const swatchSize = 9 * pxPerMm;
+    const itemWidth = 62 * pxPerMm;
+    const cols = Math.max(1, Math.floor((w - pad * 2) / itemWidth));
+    let col = 0, rowStartY = cy;
+    matches.forEach((m) => {
+      const ix = pad + col * itemWidth;
+      const iy = rowStartY;
+      ctx.fillStyle = m.hex;
+      ctx.fillRect(ix, iy, swatchSize, swatchSize);
+      ctx.strokeStyle = '#cccccc';
+      ctx.lineWidth = Math.max(1, pxPerMm * 0.3);
+      ctx.strokeRect(ix, iy, swatchSize, swatchSize);
+      ctx.fillStyle = '#222222';
+      ctx.font = textPx + 'px Arial, sans-serif';
+      ctx.fillText(m.match.code, ix + swatchSize + 4 * pxPerMm, iy + swatchSize * 0.45);
+      ctx.fillStyle = '#777777';
+      ctx.font = smallPx + 'px Arial, sans-serif';
+      ctx.fillText(m.hex + ' \u00b7 \u0394E ' + m.match.deltaE.toFixed(1), ix + swatchSize + 4 * pxPerMm, iy + swatchSize * 0.95);
+      col++;
+      if (col >= cols) { col = 0; rowStartY += swatchSize + 8 * pxPerMm; }
+    });
+
+    const rows = Math.ceil(matches.length / cols);
+    let footerY = cy + rows * (swatchSize + 8 * pxPerMm) + 6 * pxPerMm;
+    ctx.strokeStyle = '#eeeeee';
+    ctx.beginPath(); ctx.moveTo(pad, footerY); ctx.lineTo(w - pad, footerY); ctx.stroke();
+    footerY += smallPx * 1.4;
+    ctx.fillStyle = '#888888';
+    ctx.font = smallPx + 'px Arial, sans-serif';
+    wrapCanvasText(ctx, '色号为软件依据 LAB 色彩空间 + ΔE76 色差算法，从内置常用 Pantone 色号近似对照表中计算得出的最接近匹配，仅供工厂对版参考，最终请以工厂手头的实体 Pantone 色卡为准。', pad, footerY, w - pad * 2, smallPx * 1.4);
+    ctx.restore();
+  }
+
+  // ===================== seam check preview =====================
+  function applySeamCheck(on) {
+    const canvas = $('canvas');
+    let clone = document.getElementById('seamCloneLayer');
+    let bgClone = document.getElementById('seamBgClone');
+    let seamLine = document.getElementById('seamLine');
+    if (clone) clone.remove();
+    if (bgClone) bgClone.remove();
+    if (seamLine) seamLine.remove();
+    if (on) {
+      clone = document.getElementById('artLayer').cloneNode(true);
+      clone.id = 'seamCloneLayer';
+      clone.setAttribute('transform', 'translate(' + W + ',0)');
+      canvas.appendChild(clone);
+
+      bgClone = bgRect.cloneNode(true);
+      bgClone.id = 'seamBgClone';
+      bgClone.setAttribute('transform', 'translate(' + W + ',0)');
+      bgRect.parentNode.insertBefore(bgClone, bgRect.nextSibling);
+
+      seamLine = document.createElementNS(NS, 'line');
+      seamLine.id = 'seamLine';
+      seamLine.setAttribute('x1', W); seamLine.setAttribute('x2', W);
+      seamLine.setAttribute('y1', 0); seamLine.setAttribute('y2', H);
+      seamLine.setAttribute('stroke', '#ff0000');
+      seamLine.setAttribute('stroke-width', Math.max(0.5, W * 0.0025));
+      seamLine.setAttribute('stroke-dasharray', '3,2');
+      canvas.appendChild(seamLine);
+
+      canvas.setAttribute('viewBox', (W / 2) + ' 0 ' + W + ' ' + H);
+    } else {
+      canvas.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    }
+  }
+
+  // ===================== main generate =====================
+  function generate() {
+    applySeamCheck(false);
+    readCanvasSizeMm();
+    $('canvas').setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    bgRect.setAttribute('width', W);
+    bgRect.setAttribute('height', H);
+    $('dimsLabel').textContent = W.toFixed(1) + ' \u00d7 ' + H.toFixed(1) + ' mm \u00b7 实际印刷尺寸';
+
+    const targetCount = parseInt($('shapeCount').value, 10);
+    const ringPct = parseInt($('ringRatio').value, 10) / 100;
+    const sizeMin = parseFloat($('sizeMin').value);
+    const sizeMax = Math.max(parseFloat($('sizeMax').value), sizeMin + 1);
+    const sw = parseFloat($('strokeWidth').value);
+    const minGap = parseFloat($('minGap').value);
+    const bleedOn = $('bleed').checked;
+    const seed = parseInt($('seed').value, 10) || 1234;
+    const bgOpacity = parseInt($('bgOpacity').value, 10) / 100;
+    const transparent = $('transparentBg').checked;
+    const gradientOn = $('gradientStroke').checked;
+    const opacityOn = $('opacityVariation').checked;
+    const dotTarget = parseInt($('dotCount').value, 10);
+    const dotSize = parseFloat($('dotSize').value);
+    const dashTarget = parseInt($('dashCount').value, 10);
+    const dashLength = parseFloat($('dashLength').value);
+    seamMode = document.querySelector('input[name="seamMode"]:checked').value;
+    const safeMarginMM = parseFloat($('safeMargin').value);
+
+    bgRect.setAttribute('fill', '#ffffff');
+    bgRect.setAttribute('opacity', transparent ? 0 : bgOpacity);
+
+    let enabledColors = COLORS.filter((c, i) => $('col' + i).checked).map(c => c.hex);
+    if (enabledColors.length === 0) enabledColors = COLORS.map(c => c.hex);
+
+    const rng = mulberry32(seed);
+    const colorSeq = buildColorAssignment(targetCount, enabledColors, rng);
+
+    shapesLayer.innerHTML = '';
+    dotsLayer.innerHTML = '';
+    dashesLayer.innerHTML = '';
+    gradDefs.innerHTML = '';
+
+    const wrapX = (seamMode === 'wrap');
+    const bleedMarginY = bleedOn ? 14 : 0;
+    let xMin, xMax;
+    if (seamMode === 'margin') {
+      xMin = safeMarginMM; xMax = W - safeMarginMM;
+    } else {
+      const bleedMarginX = bleedOn ? 14 : 0;
+      xMin = -bleedMarginX; xMax = W + bleedMarginX;
+    }
+    const yMin = -bleedMarginY, yMax = H + bleedMarginY;
+
+    const guideLayer = $('guideLayer');
+    guideLayer.innerHTML = '';
+    if (seamMode === 'margin') {
+      [safeMarginMM, W - safeMarginMM].forEach(xPos => {
+        const line = document.createElementNS(NS, 'line');
+        line.setAttribute('x1', xPos); line.setAttribute('x2', xPos);
+        line.setAttribute('y1', 0); line.setAttribute('y2', H);
+        line.setAttribute('stroke', '#ff3355');
+        line.setAttribute('stroke-width', 0.5);
+        line.setAttribute('stroke-dasharray', '3,2');
+        guideLayer.appendChild(line);
+      });
+    }
+
+    const placed = [];
+    let mainPlaced = 0, dotPlaced = 0, dashPlaced = 0;
+
+    // ---- main shapes ----
+    for (let i = 0; i < targetCount; i++) {
+      const r = rand(rng, sizeMin, sizeMax);
+      const outerR = r + sw / 2;
+      const innerR = Math.max(0, r - sw / 2);
+      const pos = tryPlaceSolid(rng, outerR, minGap, xMin, xMax, yMin, yMax, placed, 60, wrapX);
+      if (!pos) continue;
+      placed.push({ x: pos.x, y: pos.y, innerR: innerR, outerR: outerR, type: 'main', nestedDots: 0 });
+      mainPlaced++;
+
+      const cx = pos.x, cy = pos.y;
+      const color = colorSeq[i % colorSeq.length];
+      const isRing = rng() < ringPct;
+      const partner = gradientOn ? pickPartnerColor(color, enabledColors, rng) : color;
+      const gradAngleRad = rand(rng, 0, 360) * Math.PI / 180;
+      const startAngle = isRing ? 0 : rand(rng, 0, 360);
+      const gapAngle = isRing ? 0 : rand(rng, 50, 150);
+      const endAngle = isRing ? 0 : startAngle + (360 - gapAngle);
+      const opacityVal = opacityOn ? rand(rng, 0.82, 1).toFixed(2) : null;
+
+      drawMainShape(i, '_o', cx, cy, r, sw, isRing, color, partner, gradientOn, gradAngleRad, startAngle, endAngle, opacityVal);
+      if (wrapX) {
+        if (cx - outerR < 0) drawMainShape(i, '_wl', cx + W, cy, r, sw, isRing, color, partner, gradientOn, gradAngleRad, startAngle, endAngle, opacityVal);
+        if (cx + outerR > W) drawMainShape(i, '_wr', cx - W, cy, r, sw, isRing, color, partner, gradientOn, gradAngleRad, startAngle, endAngle, opacityVal);
+      }
+    }
+
+    // ---- dots ----
+    const dotSizeMin = Math.max(0.6, dotSize * 0.3);
+    for (let i = 0; i < dotTarget; i++) {
+      const r = rand(rng, dotSizeMin, dotSize);
+      const pos = tryPlaceDot(rng, r, minGap * 0.6, xMin, xMax, yMin, yMax, placed, 40, wrapX);
+      if (!pos) continue;
+      if (pos.nestedIn) pos.nestedIn.nestedDots++;
+      placed.push({ x: pos.x, y: pos.y, innerR: 0, outerR: r, type: 'dot' });
+      dotPlaced++;
+      const color = enabledColors[Math.floor(rng() * enabledColors.length)];
+      const opacityVal = opacityOn ? rand(rng, 0.8, 1).toFixed(2) : null;
+      drawDot(pos.x, pos.y, r, color, opacityVal);
+      if (wrapX) {
+        if (pos.x - r < 0) drawDot(pos.x + W, pos.y, r, color, opacityVal);
+        if (pos.x + r > W) drawDot(pos.x - W, pos.y, r, color, opacityVal);
+      }
+    }
+
+    // ---- dash groups ----
+    for (let i = 0; i < dashTarget; i++) {
+      const groupRadius = dashLength * 0.65;
+      const pos = tryPlaceSolid(rng, groupRadius, minGap * 0.6, xMin, xMax, yMin, yMax, placed, 40, wrapX);
+      if (!pos) continue;
+      placed.push({ x: pos.x, y: pos.y, innerR: 0, outerR: groupRadius, type: 'dash' });
+      dashPlaced++;
+
+      const angle = rand(rng, 0, 360);
+      const rad = angle * Math.PI / 180;
+      const ddx = Math.cos(rad), ddy = Math.sin(rad);
+      const px = -ddy, py = ddx;
+      const linesInGroup = 2 + Math.floor(rng() * 2);
+      const color = enabledColors[Math.floor(rng() * enabledColors.length)];
+      const lineWidth = rand(rng, 1.2, 2.2);
+      const groupOpacity = opacityOn ? rand(rng, 0.8, 1) : 1;
+
+      drawDashGroup(pos.x, pos.y, ddx, ddy, px, py, linesInGroup, color, lineWidth, groupOpacity, dashLength);
+      if (wrapX) {
+        if (pos.x - groupRadius < 0) drawDashGroup(pos.x + W, pos.y, ddx, ddy, px, py, linesInGroup, color, lineWidth, groupOpacity, dashLength);
+        if (pos.x + groupRadius > W) drawDashGroup(pos.x - W, pos.y, ddx, ddy, px, py, linesInGroup, color, lineWidth, groupOpacity, dashLength);
+      }
+    }
+
+    applyWobble();
+    placedInfo.textContent = '已放置：主形状 ' + mainPlaced + '/' + targetCount +
+      ' \u00b7 圆点 ' + dotPlaced + '/' + dotTarget +
+      ' \u00b7 短线组 ' + dashPlaced + '/' + dashTarget;
+    renderPantonePanel();
+    if (seamCheckOn) applySeamCheck(true);
+  }
+
+  // ===================== UI wiring =====================
+  function syncLabel(rangeId, labelId, suffix) {
+    $(rangeId).addEventListener('input', () => {
+      $(labelId).textContent = $(rangeId).value + (suffix || '');
+      generate();
+    });
+  }
+  syncLabel('shapeCount', 'shapeCountVal');
+  syncLabel('ringRatio', 'ringRatioVal', '%');
+  syncLabel('sizeMin', 'sizeMinVal');
+  syncLabel('sizeMax', 'sizeMaxVal');
+  syncLabel('strokeWidth', 'strokeWidthVal');
+  syncLabel('minGap', 'minGapVal');
+  syncLabel('dotCount', 'dotCountVal');
+  syncLabel('dotSize', 'dotSizeVal');
+  syncLabel('dashCount', 'dashCountVal');
+  syncLabel('dashLength', 'dashLengthVal');
+  syncLabel('bgOpacity', 'bgOpacityVal', '%');
+  syncLabel('safeMargin', 'safeMarginVal');
+
+  $('wobbleStrength').addEventListener('input', () => {
+    $('wobbleStrengthVal').textContent = $('wobbleStrength').value;
+    applyWobble();
+  });
+
+  ['bleed', 'transparentBg', 'gradientStroke', 'opacityVariation'].forEach(id => {
+    $(id).addEventListener('change', generate);
+  });
+  $('wobble').addEventListener('change', applyWobble);
+  $('seed').addEventListener('input', generate);
+  COLORS.forEach((c, i) => $('col' + i).addEventListener('change', generate));
+
+  document.querySelectorAll('input[name="seamMode"]').forEach(r => {
+    r.addEventListener('change', () => {
+      $('safeMarginRow').style.display =
+        (document.querySelector('input[name="seamMode"]:checked').value === 'margin') ? 'flex' : 'none';
+      generate();
+    });
+  });
+
+  $('regenBtn').addEventListener('click', () => {
+    $('seed').value = Math.floor(Math.random() * 100000);
+    generate();
+  });
+
+  $('widthCm').addEventListener('input', () => { generate(); fitToView(); });
+  $('heightCm').addEventListener('input', () => { generate(); fitToView(); });
+
+  $('seamCheckBtn').addEventListener('click', () => {
+    seamCheckOn = !seamCheckOn;
+    $('seamCheckBtn').classList.toggle('active', seamCheckOn);
+    applySeamCheck(seamCheckOn);
+  });
+
+  // ---- zoom / pan ----
+  let zoom = 1;
+  const zoomStage = $('zoomStage');
+  const zoomLabel = $('zoomLabel');
+  function setZoom(z) {
+    zoom = Math.min(4, Math.max(0.15, z));
+    zoomStage.style.transform = 'scale(' + zoom + ')';
+    zoomLabel.textContent = Math.round(zoom * 100) + '%';
+  }
+  function fitToView() {
+    const vp = $('viewport');
+    const availW = vp.clientWidth - 60;
+    const availH = vp.clientHeight - 60;
+    const naturalW = 900;
+    const naturalH = 900 * (H / W);
+    const scale = Math.min(availW / naturalW, availH / naturalH, 2.5);
+    setZoom(Math.max(0.15, scale * 0.95));
+  }
+  $('zoomInBtn').addEventListener('click', () => setZoom(zoom + 0.25));
+  $('zoomOutBtn').addEventListener('click', () => setZoom(zoom - 0.25));
+  $('zoomResetBtn').addEventListener('click', fitToView);
+  $('viewport').addEventListener('wheel', function(e) {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      setZoom(zoom + (e.deltaY > 0 ? -0.1 : 0.1));
+    }
+  }, { passive: false });
+
+  // ===================== export: SVG =====================
+  $('downloadSvgBtn').addEventListener('click', () => {
+    const wasSeam = seamCheckOn;
+    if (wasSeam) applySeamCheck(false);
+    const svg = $('canvas');
+    const clone = svg.cloneNode(true);
+    const guide = clone.querySelector('#guideLayer'); if (guide) guide.remove();
+    clone.setAttribute('width', W + 'mm');
+    clone.setAttribute('height', H + 'mm');
+    clone.removeAttribute('style');
+    let source = new XMLSerializer().serializeToString(clone);
+    if (!source.match(/^<svg[^>]+xmlns="http:\/\/www\.w3\.org\/2000\/svg"/)) {
+      source = source.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
+    }
+    const blob = new Blob([source], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'memphis_pattern_' + W.toFixed(0) + 'x' + H.toFixed(0) + 'mm.svg';
+    a.click();
+    URL.revokeObjectURL(url);
+    if (wasSeam) applySeamCheck(true);
+  });
+
+  // ===================== export: vector PDF (direct, no print dialog) =====================
+  async function exportVectorPdf() {
+    const btn = $('exportPdfBtn');
+    if (typeof window.jspdf === 'undefined' || !window.jspdf.jsPDF) {
+      alert('矢量PDF所需的转换库未能加载（可能离线，或网络拦截了 cdnjs.cloudflare.com / jsdelivr.net）。请检查网络后重试，或先用"下载SVG矢量文件"代替。');
+      return;
+    }
+
+    const wasSeam = seamCheckOn;
+    if (wasSeam) applySeamCheck(false);
+
+    const originalText = btn.textContent;
+    btn.textContent = '⏳ 正在生成矢量PDF…';
+    btn.disabled = true;
+
+    try {
+      const { jsPDF } = window.jspdf;
+
+      // page 1: the real vector design, converted directly from the live SVG
+      const svg = $('canvas');
+      const clone = svg.cloneNode(true);
+      const guide = clone.querySelector('#guideLayer'); if (guide) guide.remove();
+      clone.removeAttribute('style');
+      clone.setAttribute('width', W);
+      clone.setAttribute('height', H);
+
+      const pdf = new jsPDF({
+        unit: 'mm',
+        format: [W, H],
+        orientation: W >= H ? 'landscape' : 'portrait'
+      });
+      await pdf.svg(clone, { x: 0, y: 0, width: W, height: H });
+
+      // page 2: Pantone legend. jsPDF's built-in fonts have no CJK glyphs, so
+      // the Chinese text here is rendered to a high-res raster image instead
+      // of vector text — page 1 (the actual print artwork) stays 100% vector.
+      const matches = buildPantoneMatches();
+      const legendHeightMm = computeLegendHeightMm(matches.length);
+      pdf.addPage([W, legendHeightMm], W >= legendHeightMm ? 'landscape' : 'portrait');
+
+      const dpi = 300;
+      const pxPerMm = dpi / 25.4;
+      const legendCanvas = document.createElement('canvas');
+      legendCanvas.width = Math.round(W * pxPerMm);
+      legendCanvas.height = Math.round(legendHeightMm * pxPerMm);
+      const lctx = legendCanvas.getContext('2d');
+      drawPngLegend(lctx, matches, 0, 0, legendCanvas.width, legendCanvas.height, dpi);
+      pdf.addImage(legendCanvas.toDataURL('image/png'), 'PNG', 0, 0, W, legendHeightMm);
+
+      pdf.save('memphis_pattern_' + W.toFixed(0) + 'x' + H.toFixed(0) + 'mm_vector.pdf');
+    } catch (err) {
+      console.error(err);
+      alert('生成矢量PDF时出错：' + err.message + '\n可以先用"下载SVG矢量文件"代替。');
+    } finally {
+      btn.textContent = originalText;
+      btn.disabled = false;
+      if (wasSeam) applySeamCheck(true);
+    }
+  }
+  $('exportPdfBtn').addEventListener('click', exportVectorPdf);
+
+  // ===================== export: high-res PNG with legend =====================
+  $('downloadPngBtn').addEventListener('click', () => {
+    const wasSeam = seamCheckOn;
+    if (wasSeam) applySeamCheck(false);
+
+    const svg = $('canvas');
+    const clone = svg.cloneNode(true);
+    const guide = clone.querySelector('#guideLayer'); if (guide) guide.remove();
+    clone.setAttribute('width', W + 'mm');
+    clone.setAttribute('height', H + 'mm');
+    clone.removeAttribute('style');
+    const svgStr = new XMLSerializer().serializeToString(clone);
+    const svgBlob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(svgBlob);
+    const img = new Image();
+    img.onload = function() {
+      const dpi = 600;
+      const pxPerMm = dpi / 25.4;
+      const designW = Math.round(W * pxPerMm);
+      const designH = Math.round(H * pxPerMm);
+
+      const matches = buildPantoneMatches();
+      const legendHeightMm = computeLegendHeightMm(matches.length);
+      const legendH = Math.round(legendHeightMm * pxPerMm);
+
+      const c = document.createElement('canvas');
+      c.width = designW;
+      c.height = designH + legendH;
+      const ctx = c.getContext('2d');
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, c.width, c.height);
+      if (!$('transparentBg').checked) ctx.fillRect(0, 0, designW, designH);
+      ctx.drawImage(img, 0, 0, designW, designH);
+
+      drawPngLegend(ctx, matches, 0, designH, designW, legendH, dpi);
+
+      c.toBlob(function(blob) {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'memphis_pattern_' + W.toFixed(0) + 'x' + H.toFixed(0) + 'mm_600dpi.png';
+        a.click();
+      });
+      URL.revokeObjectURL(url);
+      if (wasSeam) applySeamCheck(true);
+    };
+    img.src = url;
+  });
+
+  generate();
+  setZoom(1);
+  fitToView();
+</script>
+
+</body>
+</html>
