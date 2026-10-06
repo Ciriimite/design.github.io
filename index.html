@@ -846,6 +846,45 @@ select {
   background: var(--ink);
   color: var(--paper);
 }
+/* Model-specific preview controls. */
+.cup-option { min-height: 114px; padding: 4px 4px 8px; background: #F5F7F8; }
+.cup-option svg { display: block; width: 100%; height: 86px; }
+.cup-option span { font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.cup-option-row { grid-template-columns: repeat(2,minmax(0,1fr)); }
+.cup-option:focus-visible, .cup-palette:focus-visible, .cup-save-btn:focus-visible { outline: 2px solid #276B93; outline-offset: 3px; }
+.cup-palettes { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; }
+.cup-palette { padding:7px 5px; background:#fff; border:1px solid var(--line); border-radius:5px; cursor:pointer; color:var(--ink); font:inherit; font-size:11px; }
+.cup-palette.active { outline:2px solid var(--accent); outline-offset:-2px; }
+.cup-palette-chips { display:flex; height:17px; margin-bottom:5px; overflow:hidden; border-radius:2px; }
+.cup-palette-chips i { flex:1; }
+.cup-part-colors { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px 12px; }
+.cup-part-color { display:grid; grid-template-columns:1fr 29px; gap:2px 4px; align-items:center; font-size:11px; min-width:0; }
+.cup-part-color input { grid-column:2; grid-row:1 / 3; width:29px; height:30px; padding:1px; border:1px solid #CDD5DB; border-radius:4px; cursor:pointer; background:#fff; }
+.cup-part-color output { font:10px var(--mono); color:var(--ink-soft); }
+.cup-check { display:flex; gap:7px; align-items:center; margin-top:12px; font-size:12px; cursor:pointer; }
+.cup-check input { accent-color:var(--accent); width:15px; height:15px; }
+.cup-angle-label { display:flex; justify-content:space-between; font-size:12px; margin:14px 0 8px; }
+.cup-save-btn { width:100%; padding:10px; border:1px solid #AABDC9; border-radius:5px; background:#EDF4F7; color:#285773; font:inherit; font-size:12px; cursor:pointer; margin-top:14px; }
+.cup-save-btn:disabled { opacity:.55; cursor:wait; }
+.cup-save-status { min-height:28px; font-size:11px; line-height:1.5; padding-top:7px; color:var(--ink-soft); }
+.cup-preview-wrap { background:#F5F7F8; border-radius:0; box-shadow:none; max-width:100%; aspect-ratio:auto; overflow:visible; }
+.cup-drawing { aspect-ratio:600 / 620; width:100%; }
+.cup-drawing svg { display:block; width:100%; height:100%; }
+.cup-preview-caption { display:flex; align-items:baseline; justify-content:center; flex-wrap:wrap; gap:8px 16px; padding:0 12px 20px; }
+.cup-preview-caption strong { font-size:14px; }
+.cup-preview-caption span { font-size:11px; color:#6A7780; }
+.stage.cup-view .preview-area { min-width:0; width:100%; }
+.stage.cup-view { gap:12px; }
+.stage.cup-view .dims-label { margin-top:0; }
+.stage.cup-view .shape-toggle { position:static; transform:none; align-self:center; flex-shrink:0; }
+.shape-opt { white-space:nowrap; }
+@media(max-width:860px) {
+  .app { height:auto; }
+  .panel { height:auto; overflow:visible; }
+  .stage.cup-view { min-width:0; padding:12px; overflow:hidden; }
+  .cup-preview-wrap { max-width: min(100%, 520px); }
+  .shape-opt { padding:8px 12px; }
+}
 </style>
 </head>
 <body>
@@ -1154,8 +1193,16 @@ select {
     <div class="group">
       <div class="group-label">杯身预览杯型</div>
       <div class="cup-option-row" id="cupOptionRow"></div>
-      <div class="group-label" style="margin-top:14px;">盖子颜色</div>
-      <div class="swatch-row" id="lidColorRow"></div>
+      <div class="group-label" style="margin-top:14px;">整杯配色</div>
+      <div id="cupPaletteRow" class="cup-palettes"></div>
+      <div class="group-label" style="margin-top:14px;">部位颜色</div>
+      <div id="cupPartColors" class="cup-part-colors"></div>
+      <label class="cup-check"><input type="checkbox" id="cupOriginalBackground">使用图案原底色</label>
+      <label class="cup-check"><input type="checkbox" id="cupShowPattern" checked>显示图案</label>
+      <label class="cup-angle-label" for="cupPatternAngle">图案环绕位置 <output id="cupPatternAngleValue">0°</output></label>
+      <input type="range" id="cupPatternAngle" min="0" max="360" step="1" value="0">
+      <button type="button" class="cup-save-btn" id="saveCupPreview">导出杯身效果图 PNG</button>
+      <div id="cupSaveStatus" class="cup-save-status" role="status"></div>
     </div>
 
     <!-- 风格滤镜 -->
@@ -1253,14 +1300,8 @@ select {
       </div>
 
       <div class="cup-preview-wrap" id="cupPreviewWrap" style="display:none;">
-        <div class="cup-photo-frame">
-          <img id="cupPhoto" alt="杯身预览">
-          <div class="cup-shadow"></div>
-          <div class="cup-body-visual" id="cupBodyVisual"></div>
-          <div class="cup-lid-visual" id="cupLidVisual"></div>
-          <div class="cup-pattern-layer" id="cupPatternLayer"></div>
-          <div class="cup-lid-layer" id="cupLidLayer"></div>
-        </div>
+        <div id="cupDrawing" class="cup-drawing"></div>
+        <div class="cup-preview-caption"><strong id="cupPreviewName"></strong><span>配色与图案效果预览</span></div>
       </div>
     </div>
 
@@ -1750,37 +1791,55 @@ const PRESETS = {
 const BG_COLORS = ['#FFFFFF', '#FAF6EF', '#E9E7E2', '#2B2722', '#F6F3EC'];
 
 const CUP_MODELS = {
-  red: {
-    name: '红色短胖杯',
-    cupColor: '#D9453E',
-    body: { left: 34, top: 25, width: 32, height: 55, radius: '28px / 48px' },
-    lid: { left: 31, top: 16, width: 38, height: 11 },
-    defaultLid: '#C73535'
+  WJ50: {
+    name: 'WJ50 吸嘴腕带杯',
+    parts: {body:'竖纹杯身', print:'上部杯套', lid:'杯盖', spout:'吸嘴', strap:'腕带', tag:'腕带饰片', hardware:'连接扣', base:'杯底'},
+    colors: {body:'#CFBE8B', print:'#E5D7B5', lid:'#E76B96', spout:'#EAC35D', strap:'#C9A17C', tag:'#B99332', hardware:'#C9B58A', base:'#C7B985'},
+    bodyPath: 'M196 209 Q280 196 364 209 L352 512 Q350 538 279 540 Q210 538 208 512 Z',
+    printPath: 'M193 195 Q279 207 366 195 L362 301 Q282 321 199 301 Z',
+    box: [193,195,173,121]
   },
-  mint: {
-    name: '薄荷直身杯',
-    cupColor: '#BFE8D7',
-    body: { left: 35, top: 24, width: 30, height: 58, radius: '22px / 44px' },
-    lid: { left: 32, top: 15, width: 36, height: 11 },
-    defaultLid: '#BFE8D7'
+  WL50: {
+    name: 'WL50 手柄咖啡杯',
+    parts: {body:'杯身', lid:'杯盖', band:'密封圈', spout:'饮口翻片', handle:'把手', base:'杯底'},
+    colors: {body:'#E2EBEC', lid:'#ADCDE0', band:'#87ABBE', spout:'#C4DCE7', handle:'#B2D3E6', base:'#8CAFC3'},
+    bodyPath: 'M162 234 Q270 250 375 234 L363 484 Q359 514 269 519 Q180 516 176 484 Z',
+    printPath: 'M164 249 Q270 263 373 249 L361 483 Q355 510 270 514 Q186 510 178 483 Z',
+    box: [164,249,209,265]
   },
-  winter: {
-    name: '米白宽口杯',
-    cupColor: '#F4F0E7',
-    body: { left: 33, top: 25, width: 34, height: 56, radius: '30px / 46px' },
-    lid: { left: 29, top: 16, width: 42, height: 12 },
-    defaultLid: '#F7F1E4'
+  QD45: {
+    name: 'QD45 提梁旅行壶',
+    parts: {body:'杯身', lid:'杯盖', band:'颈部色环', handle:'提梁', hardware:'提梁转轴', base:'杯底'},
+    colors: {body:'#ECE7E2', lid:'#A8C844', band:'#B33273', handle:'#8BAE24', hardware:'#C0D75D', base:'#B864A0'},
+    bodyPath: 'M224 283 Q280 269 336 283 Q361 303 364 342 L362 503 Q360 529 281 532 Q202 529 200 503 L198 342 Q202 304 224 283 Z',
+    printPath: 'M202 337 Q281 350 360 337 L358 502 Q354 526 281 527 Q208 524 204 501 Z',
+    box: [202,337,158,190]
   },
-  pink: {
-    name: '粉色圆润杯',
-    cupColor: '#F6B4C1',
-    body: { left: 34, top: 24, width: 32, height: 58, radius: '32px / 52px' },
-    lid: { left: 30, top: 15, width: 40, height: 12 },
-    defaultLid: '#F2D235'
+  NG45: {
+    name: 'NG45 斜口腕绳杯',
+    parts: {body:'杯身', lid:'上盖', band:'锁扣色环', spout:'吸嘴色圈', cap:'透明嘴盖', strap:'腕绳', tag:'绳扣', hardware:'挂绳连接扣', base:'杯底'},
+    colors: {body:'#E8E2CE', lid:'#F3F2EF', band:'#DC3643', spout:'#EB394C', cap:'#DDE7EC', strap:'#E5E2DA', tag:'#E65336', hardware:'#CFCCC2', base:'#DAD4BF'},
+    bodyPath: 'M180 336 Q280 349 379 336 L376 480 Q371 519 281 523 Q190 518 185 480 Z',
+    printPath: 'M183 351 Q281 365 377 351 L373 479 Q368 513 281 517 Q194 512 188 479 Z',
+    box: [183,351,194,166]
+  },
+  CE90: {
+    name: 'CE90 收腰车载杯',
+    parts: {body:'上杯身', lower:'收腰下杯身', lid:'杯盖', band:'杯沿', spout:'吸嘴', handle:'侧提片', hardware:'转轴', base:'杯底'},
+    colors: {body:'#F1DF8A', lower:'#EBD782', lid:'#9DA968', band:'#DBCF86', spout:'#E9D693', handle:'#B6BF77', hardware:'#738844', base:'#DAC677'},
+    bodyPath: 'M197 177 Q279 190 361 177 L350 389 Q348 405 337 415 L328 519 Q326 539 279 541 Q231 539 229 519 L220 415 Q210 405 208 389 Z',
+    printPath: 'M199 186 Q280 202 359 186 L348 389 Q346 401 336 410 L327 518 Q324 535 279 536 Q235 534 232 518 L223 410 Q213 401 210 389 Z',
+    box: [199,186,160,350]
   }
 };
-
-const LID_COLORS = ['#C73535', '#F2D235', '#F4A7B8', '#BFE8D7', '#B9D9F2', '#F7F1E4', '#2B2722'];
+const CUP_PALETTES = [
+  {name:'样册配色', colors:null},
+  {name:'樱桃汽水', colors:['#F4ECE4','#E24559','#8DBBD0','#E7A4AE','#AB334B']},
+  {name:'海盐蓝', colors:['#E0EEF0','#79ACC7','#D8C886','#7797B2','#315C78']},
+  {name:'开心果', colors:['#E6EBD5','#A5BA69','#E6A3B4','#8C9D65','#59765A']},
+  {name:'丁香紫', colors:['#E4DDEA','#A69CC9','#E6CF76','#C08FB0','#796B99']},
+  {name:'黑白灰', colors:['#E9EBED','#393D43','#A8B0B7','#757F88','#252A31']}
+];
 
 // ═══════════════════════════════════════════════════════
 // 整体风格滤镜定义
@@ -1849,8 +1908,11 @@ let state = {
   edgeMargin: 8, // mm
   activePreset: 'titanium',
   previewMode: 'flat',
-  cupModel: 'red',
-  lidColor: CUP_MODELS.red.defaultLid,
+  cupModel: 'WJ50',
+  cupColors: {},
+  cupOriginalBackground: false,
+  cupShowPattern: true,
+  cupPatternAngle: 0,
   exportFormat: 'png',       // 'png' | 'pdf'
   exportDpi: 300,            // 300 | 720 | 1440
   pdfRenderMode: 'hybrid',   // 'hybrid' = 智能混合矢量 | 'raster' = 完整位图
@@ -3111,115 +3173,313 @@ function buildBgSwatchRow() {
 }
 
 function buildCupOptionRow() {
-  const row = document.getElementById('cupOptionRow');
-  if (!row) return;
+  const row = $('cupOptionRow');
   row.innerHTML = '';
-
   Object.entries(CUP_MODELS).forEach(([key, cup]) => {
     const opt = document.createElement('button');
     opt.type = 'button';
     opt.className = 'cup-option' + (key === state.cupModel ? ' active' : '');
-    opt.style.setProperty('--cup-color', cup.cupColor);
-    opt.style.setProperty('--lid-color', cup.defaultLid);
-    opt.style.setProperty('--mini-radius', cup.body.radius);
-    opt.innerHTML = `<div class="cup-mini"></div><span>${cup.name}</span>`;
+    opt.dataset.model = key;
+    opt.setAttribute('aria-pressed', String(key === state.cupModel));
+    opt.innerHTML = cupSvg(key, cup.colors, '', 'mini-' + key) + '<span>' + cup.name + '</span>';
     opt.onclick = () => {
       state.cupModel = key;
-      state.lidColor = CUP_MODELS[key].defaultLid;
       buildCupOptionRow();
       buildLidColorRow();
-      updateCupPreview();
+      saveCupSettings();
+      document.querySelector('[data-shape="bottle"]').click();
     };
     row.appendChild(opt);
   });
 }
 
-function buildLidColorRow() {
-  const row = document.getElementById('lidColorRow');
-  if (!row) return;
-  row.innerHTML = '';
+function getCupColors() {
+  if (!state.cupColors[state.cupModel]) state.cupColors[state.cupModel] = {...CUP_MODELS[state.cupModel].colors};
+  return state.cupColors[state.cupModel];
+}
 
-  LID_COLORS.forEach(c => {
-    const sw = document.createElement('div');
-    sw.className = 'swatch' + (c.toLowerCase() === state.lidColor.toLowerCase() ? ' active' : '');
-    sw.style.background = c;
-    if (c === '#F7F1E4') sw.style.border = '2px solid #DDD6C7';
-    sw.onclick = () => {
-      state.lidColor = c;
-      buildLidColorRow();
+function colorsForCupPalette(index) {
+  const defaults = CUP_MODELS[state.cupModel].colors;
+  const palette = CUP_PALETTES[index].colors;
+  if (!palette) return {...defaults};
+  const roles = {body:0, print:0, lower:0, lid:1, band:4, spout:2, cap:2, strap:3, tag:4, hardware:4, handle:1, base:4};
+  return Object.fromEntries(Object.keys(defaults).map(part => [part, palette[roles[part]]]));
+}
+
+function buildLidColorRow() {
+  const row = $('cupPartColors');
+  const colors = getCupColors();
+  row.innerHTML = '';
+  Object.entries(CUP_MODELS[state.cupModel].parts).forEach(([part, name]) => {
+    const label = document.createElement('label');
+    label.className = 'cup-part-color';
+    label.innerHTML = '<span>' + name + '</span><input type="color" value="' + colors[part] + '" aria-label="' + name + '颜色" data-part="' + part + '"><output>' + colors[part].toUpperCase() + '</output>';
+    label.querySelector('input').oninput = event => {
+      getCupColors()[part] = event.target.value;
+      label.querySelector('output').textContent = event.target.value.toUpperCase();
+      saveCupSettings();
+      updateCupPaletteSelection();
       updateCupPreview();
     };
-    row.appendChild(sw);
+    row.appendChild(label);
   });
-
-  const input = document.createElement('input');
-  input.type = 'color';
-  input.value = state.lidColor;
-  input.className = 'color-input-swatch';
-  input.oninput = (e) => {
-    state.lidColor = e.target.value;
-    buildLidColorRow();
-    updateCupPreview();
-  };
-  row.appendChild(input);
+  const paletteRow = $('cupPaletteRow');
+  paletteRow.innerHTML = '';
+  CUP_PALETTES.forEach((palette, index) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'cup-palette';
+    button.title = palette.name;
+    button.setAttribute('aria-label', palette.name);
+    button.dataset.palette = index;
+    const chips = palette.colors || Object.values(CUP_MODELS[state.cupModel].colors).slice(0,5);
+    button.innerHTML = '<span class="cup-palette-chips">' + chips.map(color => '<i style="background:' + color + '"></i>').join('') + '</span><span>' + palette.name + '</span>';
+    button.onclick = () => {
+      state.cupColors[state.cupModel] = colorsForCupPalette(index);
+      buildLidColorRow();
+      saveCupSettings();
+      updateCupPreview();
+    };
+    paletteRow.appendChild(button);
+  });
+  updateCupPaletteSelection();
 }
 
-function applyBoxStyle(el, box) {
-  el.style.left = box.left + '%';
-  el.style.top = box.top + '%';
-  el.style.width = box.width + '%';
-  el.style.height = box.height + '%';
-  if (box.radius) el.style.borderRadius = box.radius;
+function updateCupPaletteSelection() {
+  const colors = getCupColors();
+  document.querySelectorAll('.cup-palette').forEach(button => {
+    const candidate = colorsForCupPalette(Number(button.dataset.palette));
+    const active = Object.keys(candidate).every(part => candidate[part].toLowerCase() === colors[part].toLowerCase());
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
 }
 
-let _cupPreviewUrl = null;
+const CUP_STORAGE_KEY = 'floral-cup-preview-v1';
+function saveCupSettings() {
+  try {
+    localStorage.setItem(CUP_STORAGE_KEY, JSON.stringify({model:state.cupModel, colors:state.cupColors, originalBackground:state.cupOriginalBackground, showPattern:state.cupShowPattern, angle:state.cupPatternAngle}));
+    $('cupSaveStatus').textContent = '配色已保存在此浏览器';
+  } catch (_) {
+    $('cupSaveStatus').textContent = '浏览器存储不可用，本次配色仍可使用';
+  }
+}
+
+function restoreCupSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(CUP_STORAGE_KEY));
+    if (!saved || typeof saved !== 'object') return;
+    if (Object.hasOwn(CUP_MODELS, saved.model)) state.cupModel = saved.model;
+    for (const [model, definition] of Object.entries(CUP_MODELS)) {
+      const colors = {...definition.colors};
+      for (const part of Object.keys(colors)) {
+        const color = saved.colors?.[model]?.[part];
+        if (typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color)) colors[part] = color;
+      }
+      state.cupColors[model] = colors;
+    }
+    if (typeof saved.originalBackground === 'boolean') state.cupOriginalBackground = saved.originalBackground;
+    if (typeof saved.showPattern === 'boolean') state.cupShowPattern = saved.showPattern;
+    if (Number.isFinite(saved.angle)) state.cupPatternAngle = Math.max(0, Math.min(360, saved.angle));
+  } catch (_) { /* Invalid saved settings must not prevent preview. */ }
+}
+
+let cupPatternRevision = 0;
+let cupTextureCache = {key:'', url:''};
+function cupPatternTexture() {
+  if (!state.cupShowPattern) return '';
+  const colors = getCupColors();
+  const bg = state.cupOriginalBackground ? state.bg : (colors.print || colors.body);
+  const key = [cupPatternRevision, state.cupModel, bg, colors.lower, state.cupPatternAngle].join(':');
+  if (cupTextureCache.key === key) return cupTextureCache.url;
+  const source = document.createElement('canvas');
+  const dims = getActiveDims();
+  drawPatternToCanvas(source, Math.min(160, 1400 * 25.4 / Math.max(dims.w, dims.h)), {backgroundColor:bg, lowerBackgroundColor:!state.cupOriginalBackground && colors.lower});
+  const projected = document.createElement('canvas');
+  projected.width = 600;
+  projected.height = Math.max(300, Math.round(600 * CUP_MODELS[state.cupModel].box[3] / CUP_MODELS[state.cupModel].box[2]));
+  const ctx = projected.getContext('2d');
+  // Sample equal arc lengths on the front hemisphere to curve the printed artwork.
+  for (let x = 0; x < projected.width; x++) {
+    const normalX = (x + 0.5) / projected.width * 2 - 1;
+    const u = ((0.5 + Math.asin(normalX) / (2 * Math.PI) + state.cupPatternAngle / 360) % 1 + 1) % 1;
+    const sourceX = Math.min(source.width - 1, u * source.width);
+    ctx.drawImage(source, sourceX, 0, 1, source.height, x, 0, 1, projected.height);
+  }
+  // The lower artwork narrows with the CE90 waist.
+  if (state.cupModel === 'CE90') {
+    const tapered = document.createElement('canvas');
+    tapered.width = projected.width;
+    tapered.height = projected.height;
+    const tctx = tapered.getContext('2d');
+    for (let y = 0; y < tapered.height; y++) {
+      const v = y / tapered.height;
+      const width = v < 0.58 ? 1 - v * 0.13 : v < 0.66 ? 0.925 - (v - 0.58) * 1.8 : 0.781 - (v - 0.66) * 0.57;
+      const w = width * tapered.width;
+      tctx.drawImage(projected, 0, y, projected.width, 1, (tapered.width-w)/2, y, w, 1);
+    }
+    cupTextureCache = {key, url:tapered.toDataURL('image/png')};
+  } else cupTextureCache = {key, url:projected.toDataURL('image/png')};
+  return cupTextureCache.url;
+}
 
 function updateCupPreview() {
   const wrap = $('cupPreviewWrap');
-  const photo = $('cupPhoto');
-  const bodyVisual = $('cupBodyVisual');
-  const lidVisual = $('cupLidVisual');
-  const patternLayer = $('cupPatternLayer');
-  const lidLayer = $('cupLidLayer');
-  const canvas = $('patternCanvas');
-  if (!wrap || !photo || !bodyVisual || !lidVisual || !patternLayer || !lidLayer || !canvas) return;
+  if (!wrap || state.previewMode !== 'bottle') return;
+  wrap.style.width = Math.round(520 * Math.min(zoomLevel, 2)) + 'px';
+  $('cupDrawing').innerHTML = cupSvg(state.cupModel, getCupColors(), cupPatternTexture(), 'preview');
+  $('cupPreviewName').textContent = CUP_MODELS[state.cupModel].name;
+}
 
-  const cup = CUP_MODELS[state.cupModel] || CUP_MODELS.red;
-  wrap.style.width = Math.round(520 * zoomLevel) + 'px';
-  photo.removeAttribute('src');
-  wrap.style.setProperty('--cup-color', cup.cupColor);
-  wrap.style.setProperty('--lid-color', state.lidColor);
-  wrap.style.setProperty('--cup-radius', cup.body.radius);
-  applyBoxStyle(bodyVisual, cup.body);
-  applyBoxStyle(lidVisual, cup.lid);
-  applyBoxStyle(patternLayer, cup.body);
-  applyBoxStyle(lidLayer, cup.lid);
 
-  // 异步生成背景图 URL，避免同步 toDataURL 阻塞主线程
-  canvas.toBlob(blob => {
-    if (!blob) return;
-    const url = URL.createObjectURL(blob);
-    patternLayer.style.backgroundImage = `url("${url}")`;
-    if (_cupPreviewUrl) URL.revokeObjectURL(_cupPreviewUrl);
-    _cupPreviewUrl = url;
-  }, 'image/png');
-  lidLayer.style.background = state.lidColor;
-
-  // 滤镜对杯身的色彩影响：用 CSS filter 让整个杯子（包括金属、盖子）也呈现整体氛围
-  // 这里只取滤镜的色彩部分（cssFilter），不应用纹理和边缘扰动，避免破坏杯子真实感
-  const filter = FILTER_STYLES[state.filterStyle];
-  const alpha = state.filterIntensity / 100;
-  if (filter && filter.cssFilter && filter.cssFilter !== 'none' && alpha > 0.05) {
-    // 用 opacity 模拟强度（实际是 filter 强度衰减比较复杂，opacity 是简化但视觉上够用）
-    // 由于杯身和图案叠加显示，这里的 filter 只让杯子部分有氛围感
-    wrap.style.filter = filter.cssFilter;
-    // 强度低时通过反差减弱：用 filter 比例混合较复杂，这里仅在强度>30 时启用，简化处理
-    if (alpha < 0.5) wrap.style.opacity = '0.92';
-    else wrap.style.opacity = '1';
+// Shared construction keeps the selector thumbnails, preview and PNG identical.
+function cupSvg(model, colors, texture, id) {
+  const cup = CUP_MODELS[model];
+  const shade = 'url(#' + id + '-shade)';
+  const edge = 'stroke="#27333F" stroke-opacity=".16" stroke-width="1.1"';
+  const path = (part, d, extra='') => '<g data-cup-part="' + part + '"><path d="' + d + '" fill="' + colors[part] + '" ' + edge + ' ' + extra + '/><path d="' + d + '" fill="' + shade + '" ' + extra + '/></g>';
+  const ellipse = (part, cx,cy,rx,ry) => '<g data-cup-part="' + part + '"><ellipse cx="' + cx + '" cy="' + cy + '" rx="' + rx + '" ry="' + ry + '" fill="' + colors[part] + '" ' + edge + '/><ellipse cx="' + cx + '" cy="' + cy + '" rx="' + rx + '" ry="' + ry + '" fill="url(#' + id + '-top)"/></g>';
+  const line = (d, color, width=2, opacity=1) => '<path d="' + d + '" fill="none" stroke="' + color + '" stroke-width="' + width + '" opacity="' + opacity + '" stroke-linecap="round" stroke-linejoin="round"/>';
+  let back = '', front = '', detail = '', lower = '';
+  if (model === 'WJ50') {
+    back += path('strap', 'M371 242 Q395 227 404 254 L420 438 Q420 465 392 478 L380 476 L375 274 L365 257 Z');
+    back += line('M394 263 L409 439 Q410 455 393 461', '#fff', 3, .32);
+    for (let y=272; y<449; y+=6) back += line('M382 '+y+' L408 '+(y-7), '#594533', .8, .18);
+    back += path('hardware','M357 193 Q382 184 385 209 L381 248 L369 250 L373 211 Q373 202 362 205 Z');
+    for(let x=217;x<=344;x+=13) {
+      detail += line('M'+x+' 318 L'+(x+ (x<280?4:-4))+' 506', '#574C31', 5, .15);
+      detail += line('M'+(x+3)+' 319 L'+(x+3+(x<280?4:-4))+' 504', '#fff', 3, .25);
+    }
+    front += path('print', cup.printPath);
+    front += path('lid','M191 177 Q279 187 367 177 L367 204 Q281 224 191 202 Z');
+    front += ellipse('lid',279,178,88,20);
+    front += '<ellipse cx="315" cy="175" rx="20" ry="6" fill="#3A2330" opacity=".48"/>';
+    front += path('spout','M223 100 Q236 93 248 100 L248 174 Q238 181 222 174 Z');
+    front += ellipse('spout',235,100,13,4);
+    front += line('M226 105 L226 166','#fff',3,.55);
+    front += path('tag','M374 240 L398 236 L410 251 L409 284 Q390 293 369 285 L369 251 Z');
+    front += line('M378 256 L399 253 M377 262 L400 259','#fff',1,.22);
+    front += path('base','M208 511 Q277 534 352 511 L350 521 Q343 539 278 540 Q217 537 210 524 Z');
+  } else if (model === 'WL50') {
+    back += path('handle','M368 254 C476 229 490 350 452 400 Q421 438 367 411 L369 382 Q414 405 431 375 C458 327 432 266 370 282 Z');
+    back += line('M386 258 C452 253 476 329 446 382','#fff',6,.42);
+    front += path('band','M161 233 Q266 250 376 233 L375 251 Q266 267 163 251 Z');
+    front += path('lid','M162 215 Q268 225 375 215 L375 235 Q270 254 162 235 Z');
+    front += ellipse('lid',269,215,107,18);
+    front += path('spout','M212 180 Q225 176 237 181 L243 212 L217 213 Z');
+    front += ellipse('spout',225,181,13,4);
+    front += path('spout','M277 207 Q300 197 338 203 L337 214 Q306 221 279 219 Z');
+    front += line('M173 222 Q268 239 364 222','#fff',2,.5);
+    front += path('base','M178 486 Q266 518 363 485 L359 499 Q341 519 268 520 Q192 516 183 503 Z');
+  } else if (model === 'QD45') {
+    back += '<g data-cup-part="handle">' + line('M187 286 L187 170 C187 83 370 83 370 170 L370 286',colors.handle,19) + line('M182 280 L182 169 C182 92 366 92 366 169 L366 280','#fff',3,.32) + '</g>';
+    front += path('band','M215 269 Q280 281 347 269 L347 298 Q282 314 215 298 Z');
+    front += path('lid','M216 217 Q218 192 280 191 Q341 192 345 217 L347 269 Q280 285 214 269 Z');
+    front += ellipse('lid',280,215,64,15);
+    front += line('M226 226 L225 257','#fff',5,.3);
+    front += ellipse('hardware',191,284,13,16);
+    front += ellipse('hardware',368,284,13,16);
+    front += '<circle cx="191" cy="284" r="5" fill="#54682A"/><circle cx="368" cy="284" r="5" fill="#54682A"/>';
+    front += path('base','M202 505 Q279 528 361 505 L358 516 Q345 534 280 534 Q214 531 205 518 Z');
+  } else if (model === 'NG45') {
+    back += '<g data-cup-part="strap">' + line('M373 277 Q424 288 425 339 L422 472 Q419 535 404 503 Q399 487 403 440 L407 333 Q405 308 378 303',colors.strap,9) + line('M374 276 Q419 288 420 337 L417 474 Q414 511 408 506','#fff',2,.65) + '</g>';
+    back += path('hardware','M373 251 Q399 250 401 274 L398 304 L385 303 L390 276 Q388 266 377 266 Z');
+    front += path('band','M180 302 Q279 318 380 302 L380 338 Q279 362 180 337 Z');
+    front += ellipse('band',280,305,100,18);
+    front += path('lid','M186 298 L189 262 Q190 239 219 227 L298 230 Q367 239 370 266 L372 299 Q280 323 186 298 Z');
+    front += '<path d="M202 262 Q223 240 299 244 Q343 247 355 265" fill="none" stroke="#fff" stroke-width="8" opacity=".28"/>';
+    front += '<g transform="rotate(-22 226 236)">';
+    front += path('spout','M198 214 Q226 203 253 214 L253 239 Q226 250 198 239 Z');
+    front += path('cap','M199 198 Q202 180 226 180 Q249 180 252 198 L253 221 Q227 233 198 221 Z','opacity=".87"');
+    front += ellipse('cap',225,199,26,12);
+    front += line('M209 194 L208 213','#fff',5,.75);
+    front += '</g>';
+    front += path('band','M249 331 Q278 315 307 331 L308 342 Q280 350 250 342 Z');
+    front += line('M260 335 L296 335','#fff',2,.32);
+    front += path('tag','M400 355 Q411 350 423 355 L424 390 Q411 398 400 390 Z');
+    for(let y=360;y<389;y+=7) front += line('M402 '+y+' L423 '+y,'#7D2117',2,.35);
+    front += path('base','M187 483 Q280 517 375 483 Q366 519 281 524 Q198 519 187 483 Z');
   } else {
-    wrap.style.filter = '';
-    wrap.style.opacity = '1';
+    lower += path('lower','M210 387 Q280 399 349 387 Q347 404 337 415 L328 519 Q326 539 279 541 Q232 539 229 519 L220 415 Q212 405 210 387 Z');
+    front += path('band','M195 165 Q279 177 363 165 L362 187 Q280 204 197 188 Z');
+    front += path('lid','M195 151 Q279 167 363 151 L363 171 Q279 190 195 173 Z');
+    front += ellipse('lid',279,151,84,16);
+    front += path('band','M198 143 Q217 149 233 146 L233 158 Q211 162 197 155 Z');
+    front += path('spout','M288 123 Q303 114 318 122 L318 152 Q303 162 287 151 Z');
+    front += ellipse('spout',303,122,16,5);
+    front += line('M292 126 L292 147','#fff',3,.45);
+    front += path('handle','M352 172 Q368 176 366 193 L360 215 L381 241 Q386 250 373 248 L351 234 Q341 227 346 210 L350 194 Z');
+    front += ellipse('hardware',354,182,8,10);
+    front += line('M354 179 L355 186','#fff',2,.6);
+    front += path('base','M230 516 Q278 535 329 516 L327 530 Q314 542 279 543 Q243 541 233 531 Z');
+    detail += line('M214 389 Q281 400 347 389','#514B34',1,.15);
   }
+  const [x,y,w,h] = cup.box;
+  const artwork = texture ? '<image data-cup-artwork="true" href="' + texture + '" x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" preserveAspectRatio="none" clip-path="url(#' + id + '-print)"/><path d="' + cup.printPath + '" fill="' + shade + '"/>' : '';
+  // WJ50 sleeve is a separate material above the ribbed lower body.
+  if (model === 'WJ50') front = front.replace(path('print',cup.printPath), path('print',cup.printPath) + artwork);
+  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 620" role="img" aria-label="' + cup.name + '" data-cup-model="' + model + '">' +
+    '<defs><linearGradient id="' + id + '-shade" x1="0" x2="1"><stop stop-color="#263340" stop-opacity=".22"/><stop offset=".13" stop-color="#fff" stop-opacity=".36"/><stop offset=".29" stop-color="#fff" stop-opacity=".10"/><stop offset=".56" stop-color="#fff" stop-opacity="0"/><stop offset=".86" stop-color="#25313D" stop-opacity=".07"/><stop offset="1" stop-color="#25313D" stop-opacity=".26"/></linearGradient>' +
+    '<linearGradient id="' + id + '-top" x2="0" y2="1"><stop stop-color="#fff" stop-opacity=".46"/><stop offset="1" stop-color="#fff" stop-opacity=".04"/></linearGradient>' +
+    '<radialGradient id="' + id + '-shadow"><stop stop-color="#31404D" stop-opacity=".22"/><stop offset="1" stop-color="#31404D" stop-opacity="0"/></radialGradient>' +
+    '<clipPath id="' + id + '-print"><path d="' + cup.printPath + '"/></clipPath></defs>' +
+    '<ellipse cx="290" cy="550" rx="151" ry="21" fill="url(#' + id + '-shadow)"/>' +
+    back + path('body',cup.bodyPath) + lower + (model === 'WJ50' ? '' : artwork) + detail + front + '</svg>';
+}
+
+async function downloadCupPreview() {
+  const button = $('saveCupPreview');
+  const model = state.cupModel;
+  button.disabled = true;
+  try {
+    const svg = cupSvg(model, getCupColors(), cupPatternTexture(), 'download');
+    const url = URL.createObjectURL(new Blob([svg], {type:'image/svg+xml;charset=utf-8'}));
+    try {
+      const image = new Image();
+      image.src = url;
+      await image.decode();
+      const canvas = document.createElement('canvas');
+      canvas.width = 1800;
+      canvas.height = 1860;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#F5F7F8';
+      ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.drawImage(image,0,0,canvas.width,canvas.height);
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+      if (!blob) throw new Error('无法生成效果图');
+      const link = document.createElement('a');
+      const downloadUrl = URL.createObjectURL(blob);
+      link.href = downloadUrl;
+      link.download = model + '_杯身效果图.png';
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(downloadUrl), 30000);
+      $('cupSaveStatus').textContent = '已导出 ' + model + ' 杯身效果图';
+    } finally { URL.revokeObjectURL(url); }
+  } catch (error) {
+    $('cupSaveStatus').textContent = '效果图导出失败：' + error.message;
+  } finally { button.disabled = false; }
+}
+
+function setupCupControls() {
+  restoreCupSettings();
+  $('cupOriginalBackground').checked = state.cupOriginalBackground;
+  $('cupShowPattern').checked = state.cupShowPattern;
+  $('cupPatternAngle').value = state.cupPatternAngle;
+  $('cupPatternAngleValue').textContent = state.cupPatternAngle + '°';
+  for (const [id, key] of [['cupOriginalBackground','cupOriginalBackground'],['cupShowPattern','cupShowPattern']]) {
+    $(id).onchange = event => {
+      state[key] = event.target.checked;
+      saveCupSettings();
+      updateCupPreview();
+    };
+  }
+  $('cupPatternAngle').oninput = event => {
+    state.cupPatternAngle = Number(event.target.value);
+    $('cupPatternAngleValue').textContent = state.cupPatternAngle + '°';
+    saveCupSettings();
+    updateCupPreview();
+  };
+  $('saveCupPreview').onclick = downloadCupPreview;
 }
 
 function syncSliderLabels() {
@@ -3643,6 +3903,7 @@ function scheduleRender() {
 }
 
 function render() {
+  cupPatternRevision++;
   const canvas = $('patternCanvas');
   const dims = getActiveDims();
   const DPI_SCALE = 4; // 渲染倍率，保证清晰度
@@ -3667,7 +3928,10 @@ function render() {
   ctx.fillStyle = state.bg;
   ctx.fillRect(0, 0, wPx, hPx);
 
-  if (state.activeIcons.size === 0) return;
+  if (state.activeIcons.size === 0) {
+    updateCupPreview();
+    return;
+  }
 
   const isDarkBg = isColorDark(state.bg);
   const edgeMarginPx = state.edgeMargin * mmToPx;
@@ -4659,8 +4923,12 @@ function drawPatternToCanvas(canvas, dpi, options = {}) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   // 图案区背景
-  ctx.fillStyle = state.bg;
+  ctx.fillStyle = options.backgroundColor || state.bg;
   ctx.fillRect(0, 0, patternWidthPx, patternHeightPx);
+  if (options.lowerBackgroundColor) {
+    ctx.fillStyle = options.lowerBackgroundColor;
+    ctx.fillRect(0, Math.round(patternHeightPx * 0.58), patternWidthPx, patternHeightPx);
+  }
   ctx.save();
   ctx.beginPath();
   ctx.rect(0, 0, patternWidthPx, patternHeightPx);
@@ -5970,6 +6238,7 @@ document.querySelectorAll('.shape-opt').forEach(opt => {
     document.querySelectorAll('.shape-opt').forEach(o => o.classList.remove('active'));
     opt.classList.add('active');
     state.previewMode = opt.dataset.shape;
+    document.querySelector('.stage').classList.toggle('cup-view', state.previewMode === 'bottle');
     const wrap = document.getElementById('canvasWrap');
     const seamWrap = document.getElementById('seamWrap');
     const cupWrap = document.getElementById('cupPreviewWrap');
@@ -6076,6 +6345,7 @@ document.addEventListener('change', event => {
 
 async function initializeApp() {
   await restorePersistentUploads();
+  setupCupControls();
   setupEventDelegation();
   buildPresetRow();
   buildIconGrid();
